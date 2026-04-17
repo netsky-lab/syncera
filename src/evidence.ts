@@ -1,4 +1,5 @@
 import { generateJson } from "./llm";
+import { config } from "./config";
 import { ClaimExtractionSchema, type Claim } from "./schemas/claim";
 import type { ResearchPlan } from "./schemas/plan";
 import type { SourceIndex, SearchResult } from "./schemas/source";
@@ -161,6 +162,7 @@ Start claim IDs from C${claimCounter + 1}. Output JSON only.`;
         system: EVIDENCE_SYSTEM,
         prompt,
         temperature: 0.2,
+        endpoint: config.endpoints.evidence,
       });
 
       // Post-process: ensure each claim's reference URL is in the actual sources catalog,

@@ -1,4 +1,5 @@
 import { generateJson, countTokens, inputTokenBudget } from "./llm";
+import { config } from "./config";
 import { searchAll, searchSearXNG } from "./search";
 import { readUrls } from "./reader";
 import { SerpQueriesSchema, LearningsSchema } from "./schemas/learning";
@@ -444,6 +445,7 @@ async function generateQueries(args: {
     system: QUERY_GEN_SYSTEM,
     prompt: prompt.slice(0, 6000),
     temperature: 0.4,
+    endpoint: config.endpoints.harvester,
   });
 
   return object.queries.slice(0, numQueries);
@@ -508,6 +510,7 @@ async function extractLearnings(args: {
       system: LEARNINGS_SYSTEM,
       prompt: `${promptPrefix}${batchBlock}`,
       temperature: 0.2,
+      endpoint: config.endpoints.harvester,
     });
     allLearnings.push(...object.learnings);
     allFollowUps.push(...object.follow_up_questions);

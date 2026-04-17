@@ -1,4 +1,5 @@
 import { generateJson } from "./llm";
+import { config } from "./config";
 import { ResearchPlanSchema, type ResearchPlan } from "./schemas/plan";
 
 const PLANNER_SYSTEM_PROMPT = `You are a senior research planner. Produce a structured, falsifiable research plan.
@@ -60,6 +61,7 @@ export async function makePlan(input: PlannerInput): Promise<ResearchPlan> {
     schema: ResearchPlanSchema,
     system: PLANNER_SYSTEM_PROMPT,
     prompt,
+    endpoint: config.endpoints.planner,
   });
 
   console.log(

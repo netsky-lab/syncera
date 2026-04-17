@@ -4,6 +4,7 @@
 // All other sections built from critic_report + claims data directly.
 
 import { generateJson, generateText } from "./llm";
+import { config } from "./config";
 import type { Claim, CriticReport } from "./schemas/claim";
 import type { Verification } from "./schemas/verification";
 import type { ResearchPlan } from "./schemas/plan";
@@ -81,6 +82,7 @@ Rules:
 Output JSON: {"summary": "<three sentences>"}`,
       prompt: `Topic: ${plan.topic}\n\nAssessments: ${assessmentsList}\nOverall confidence: ${(criticReport.overall_confidence * 100).toFixed(0)}%\nCritic summary: ${criticReport.summary}\n\nSample verified claims:\n${claimsSummary}\n\nReturn JSON: {"summary": "..."}`,
       maxRetries: 1,
+      endpoint: config.endpoints.synth,
     });
     execSummary = object.summary;
   } catch (err: any) {
@@ -132,6 +134,7 @@ Rules:
 Output JSON: {"steps": ["1. ...", "2. ..."]}`,
       prompt: `Topic: ${plan.topic}\n\nVerified claims:\n${claimsSummary}\n\nReturn JSON: {"steps": ["1. ...", "2. ..."]}`,
       maxRetries: 1,
+      endpoint: config.endpoints.synth,
     });
     deploymentBullets = object.steps.slice(0, 6);
   } catch (err: any) {

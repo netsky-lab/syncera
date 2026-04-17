@@ -1,4 +1,5 @@
 import { generateJson } from "./llm";
+import { config } from "./config";
 import { VerificationSchema, type Verification } from "./schemas/verification";
 import type { Claim } from "./schemas/claim";
 import { readFileSync, writeFileSync, existsSync } from "fs";
@@ -186,7 +187,8 @@ ${sourceExcerpt}
 
 Does the claim accurately follow from the source? Output JSON with exactly two fields: "verdict" and "notes".`,
       temperature: 0.1,
-      maxRetries: 1, // don't spin forever on schema drift
+      maxRetries: 1,
+      endpoint: config.endpoints.verifier,
     });
 
     const verdict = normalizeVerdict(object.verdict);

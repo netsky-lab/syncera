@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { config } from "./config";
 
+interface EndpointOverride {
+  baseURL: string;
+  model: string;
+  apiKey: string;
+}
+
 interface GenerateJsonOptions<T extends z.ZodType> {
   schema: T;
   system: string;
@@ -9,6 +15,7 @@ interface GenerateJsonOptions<T extends z.ZodType> {
   temperature?: number;
   maxRetries?: number;
   enableContinuation?: boolean; // if finish_reason=length, re-prompt to continue
+  endpoint?: EndpointOverride;  // per-phase model override
 }
 
 interface GenerateJsonResult<T> {
@@ -24,6 +31,7 @@ interface ChatCallOptions {
   temperature?: number;
   maxTokens?: number;
   responseFormat?: "json_object" | "text";
+  endpoint?: EndpointOverride;
 }
 
 interface ChatCallResult {
@@ -36,8 +44,9 @@ interface ChatCallResult {
 // Always stream responses — prevents Cloudflare/proxy timeouts (524) on long
 // generations by keeping the connection active. Retries on transient 5xx.
 async function chatCompletion(opts: ChatCallOptions): Promise<ChatCallResult> {
+  const ep = opts.endpoint ?? config.gemma;
   const body: Record<string, any> = {
-    model: config.gemma.model,
+    model: ep.model,
     messages: opts.messages,
     temperature: opts.temperature ?? 0.3,
     stream: true,
@@ -60,11 +69,11 @@ async function chatCompletion(opts: ChatCallOptions): Promise<ChatCallResult> {
     const reqController = new AbortController();
     const reqTimer = setTimeout(() => reqController.abort(), 90_000);
     try {
-      response = await fetch(`${config.gemma.baseURL}/chat/completions`, {
+      response = await fetch(`${ep.baseURL}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${config.gemma.apiKey}`,
+          Authorization: `Bearer ${ep.apiKey}`,
           Accept: "text/event-stream",
           "Accept-Encoding": "identity",
         },
@@ -199,6 +208,7 @@ export async function generateJson<T extends z.ZodType>(
       temperature,
       maxTokens,
       responseFormat: "json_object",
+      endpoint: options.endpoint,
     });
 
     // Handle finish_reason=length via continuation (rare with max_tokens unset)
@@ -213,6 +223,7 @@ export async function generateJson<T extends z.ZodType>(
         temperature,
         maxTokens,
         responseFormat: "json_object",
+        endpoint: options.endpoint,
       });
       result = {
         content: result.content + continuation.content,
@@ -268,6 +279,7 @@ export async function generateText(opts: {
   prompt: string;
   temperature?: number;
   maxTokens?: number;
+  endpoint?: EndpointOverride;
 }): Promise<{ text: string; usage: ChatCallResult["usage"] }> {
   const result = await chatCompletion({
     messages: [
@@ -276,6 +288,7 @@ export async function generateText(opts: {
     ],
     temperature: opts.temperature,
     maxTokens: opts.maxTokens,
+    endpoint: opts.endpoint,
   });
   return { text: result.content, usage: result.usage };
 }

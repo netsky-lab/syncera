@@ -1,4 +1,5 @@
 import { generateJson } from "./llm";
+import { config } from "./config";
 import { CriticReportSchema, type Claim, type CriticReport } from "./schemas/claim";
 import type { Verification } from "./schemas/verification";
 import type { ResearchPlan } from "./schemas/plan";
@@ -126,6 +127,7 @@ Evaluate the evidence against each hypothesis. Be critical. Use only verified cl
     system: CRITIC_SYSTEM,
     prompt,
     temperature: 0.2,
+    endpoint: config.endpoints.critic,
   });
 
   const reportPath = join(projectDir, "critic_report.json");
