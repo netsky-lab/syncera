@@ -62,10 +62,11 @@ const totalSources = sourcesIdx?.total_sources ?? 0;
 const byProvider = sourcesIdx?.by_provider ?? {};
 const arxivCount = byProvider.arxiv ?? 0;
 const s2Count = byProvider.semantic_scholar ?? 0;
+const openalexCount = byProvider.openalex ?? 0;
 const webCount = Object.entries(byProvider)
   .filter(([k]) => k.startsWith("searxng") || k === "searxng")
   .reduce((n, [, v]) => n + (v as number), 0);
-const primaryCount = arxivCount + s2Count;
+const primaryCount = arxivCount + s2Count + openalexCount;
 const primaryPct = totalSources > 0 ? (primaryCount / totalSources) * 100 : 0;
 
 console.log("📊 SOURCES");

@@ -18,6 +18,21 @@ Rules:
 - Hypotheses must be ORTHOGONAL: no two should be provable by the same experiment. If H1 covers perplexity and H2 covers context window, they're orthogonal. If both cover "generally better quality", collapse them.
 - Each hypothesis MUST include an exact numeric threshold in at least one acceptance criterion ("< 2%", ">= 32768 tokens", ">= 2.5x"), never a vague one ("low", "acceptable", "comparable").
 
+## Answerability gate (critical)
+
+Before finalizing each hypothesis, ask: "Could I plausibly find a published paper, benchmark, or documented experiment that SUPPORTS or REFUTES this exact claim?" If the answer requires unpublished work on an exact combination no one has tested (e.g. method X + model Y + hardware Z + context length W simultaneously), the hypothesis is too narrow — it will come back "unsupported" and add no information.
+
+Signals the topic wants method/approach COMPARISON (hypotheses should cover a space, not a point):
+  - "X or similar", "X vs Y", "compare A, B, C", "which method", "best approach to"
+  - Ambiguous subject ("a quantization method", "some compression scheme")
+  - Listed alternatives separated by commas or "or"
+
+When comparison is implied, AT LEAST HALF of your hypotheses (ceil(N/2)) MUST be phrased over the SPACE ("at least one of {A, B, C} achieves X", "method family F beats baseline by Δ", "2-bit vs 4-bit degrades M by Δ"). Pinning every hypothesis to one specific method from the topic when alternatives are clearly implied is a PLANNING ERROR — such hypotheses are usually unanswerable from published literature. Reserve specific-method hypotheses for metrics that method's own paper or docs actually report.
+
+When the topic names ONE method with no alternatives implied, lock hypotheses to that method across different metrics — that's the right shape.
+
+Also: use the model/hardware/dataset names from the topic verbatim. Do NOT silently substitute ("Gemma" stays "Gemma", not "Gemma-2"; "RTX 5090" stays "RTX 5090"). If the topic is ambiguous about a version, keep it unversioned in the hypothesis rather than guessing.
+
 ## Acceptance criteria discipline
 
 Each criterion = {name: specific metric, threshold: number + unit or ratio}.
