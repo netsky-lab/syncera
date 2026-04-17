@@ -132,36 +132,42 @@ async function chatCompletion(opts: ChatCallOptions): Promise<ChatCallResult> {
   let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
   // Inter-chunk timeout — if we don't receive a byte for N seconds mid-stream,
-  // abort. Some llama.cpp prefills go silent for minutes on edge-case prompts
-  // and the initial-fetch timeout doesn't cover the streaming phase.
+  // abort via reqController (same abort signal that killed initial fetch).
+  // Promise.race approach didn't work because Bun's reader.read() doesn't
+  // yield to the timeout; aborting via signal actually cancels the underlying
+  // fetch connection.
   const INTER_CHUNK_TIMEOUT_MS = 45_000;
+  let chunkTimer: ReturnType<typeof setTimeout> | undefined;
+  const resetChunkTimer = () => {
+    if (chunkTimer) clearTimeout(chunkTimer);
+    chunkTimer = setTimeout(() => {
+      console.warn(`[llm] inter-chunk timeout (${INTER_CHUNK_TIMEOUT_MS}ms) — aborting stream`);
+      try { reqController.abort(); } catch {}
+    }, INTER_CHUNK_TIMEOUT_MS);
+  };
+  resetChunkTimer();
 
   while (true) {
     let readResult: { done: boolean; value?: Uint8Array } | undefined;
     try {
-      readResult = await Promise.race([
-        reader.read(),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`stream inter-chunk timeout (${INTER_CHUNK_TIMEOUT_MS}ms)`)),
-            INTER_CHUNK_TIMEOUT_MS
-          )
-        ),
-      ]);
+      readResult = await reader.read();
+      resetChunkTimer(); // data received — reset watchdog
     } catch (err: any) {
+      if (chunkTimer) clearTimeout(chunkTimer);
       // ZlibError from Bun's stream decompressor — take what we have so far
       if (/Zlib|Decompression/i.test(err.message ?? "") || err.name === "ZlibError") {
         break;
       }
-      // Inter-chunk timeout — abort stream, return partial content (may still
-      // be valid JSON if enough tokens emitted; otherwise upstream will retry)
-      if (/inter-chunk timeout/i.test(err.message ?? "")) {
-        try { reader.cancel(); } catch {}
+      // Abort from inter-chunk watchdog — partial content, break loop
+      if (err.name === "AbortError" || /abort/i.test(err.message ?? "")) {
         break;
       }
       throw err;
     }
-    if (!readResult || readResult.done) break;
+    if (!readResult || readResult.done) {
+      if (chunkTimer) clearTimeout(chunkTimer);
+      break;
+    }
     buffer += decoder.decode(readResult.value!, { stream: true });
 
     const lines = buffer.split("\n");
