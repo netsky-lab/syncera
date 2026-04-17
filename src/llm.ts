@@ -131,13 +131,32 @@ async function chatCompletion(opts: ChatCallOptions): Promise<ChatCallResult> {
   let finishReason = "unknown";
   let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
+  // Inter-chunk timeout — if we don't receive a byte for N seconds mid-stream,
+  // abort. Some llama.cpp prefills go silent for minutes on edge-case prompts
+  // and the initial-fetch timeout doesn't cover the streaming phase.
+  const INTER_CHUNK_TIMEOUT_MS = 45_000;
+
   while (true) {
     let readResult: { done: boolean; value?: Uint8Array } | undefined;
     try {
-      readResult = await reader.read();
+      readResult = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`stream inter-chunk timeout (${INTER_CHUNK_TIMEOUT_MS}ms)`)),
+            INTER_CHUNK_TIMEOUT_MS
+          )
+        ),
+      ]);
     } catch (err: any) {
       // ZlibError from Bun's stream decompressor — take what we have so far
       if (/Zlib|Decompression/i.test(err.message ?? "") || err.name === "ZlibError") {
+        break;
+      }
+      // Inter-chunk timeout — abort stream, return partial content (may still
+      // be valid JSON if enough tokens emitted; otherwise upstream will retry)
+      if (/inter-chunk timeout/i.test(err.message ?? "")) {
+        try { reader.cancel(); } catch {}
         break;
       }
       throw err;
