@@ -293,7 +293,11 @@ async function deepResearch(opts: {
       }
       const academic = await searchAll(query).catch(() => [] as SearchResult[]);
       for (const r of academic) {
-        if (r.provider === "arxiv" || r.provider === "semantic_scholar") {
+        if (
+          r.provider === "arxiv" ||
+          r.provider === "semantic_scholar" ||
+          r.provider === "openalex"
+        ) {
           paged.push(r);
         }
       }
