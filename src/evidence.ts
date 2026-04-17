@@ -154,9 +154,18 @@ export async function extractEvidence(
       continue;
     }
 
-    // H5: extract named-entity pool BEFORE evidence extraction so the
-    // evidence prompt can explicitly mandate coverage of each entity.
-    const methodPool = await extractMethodPool(learnings);
+    // H5: extract named-entity pool BEFORE evidence extraction.
+    // Fast-fail: wrap in timeout — if method-pool takes >60s, skip it and
+    // proceed with empty pool. Better to lose coverage hint than hang.
+    const methodPool = await Promise.race([
+      extractMethodPool(learnings),
+      new Promise<string[]>((resolve) =>
+        setTimeout(() => {
+          console.warn(`[evidence] ${sourceIndex.task_id}: method-pool timeout (60s) — skipping`);
+          resolve([]);
+        }, 60_000)
+      ),
+    ]);
     if (methodPool.length > 0) {
       console.log(
         `[evidence] ${sourceIndex.task_id}: method-pool (${methodPool.length}): ${methodPool.slice(0, 8).join(", ")}${methodPool.length > 8 ? "..." : ""}`
