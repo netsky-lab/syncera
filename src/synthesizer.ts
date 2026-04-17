@@ -62,8 +62,23 @@ export async function synthesize(
   try {
     const { object } = await generateJson({
       schema: z.object({ summary: z.string() }),
-      system:
-        "Write a 3-4 sentence executive summary of the research state. Cite specific claim IDs [C1]. Call out the main tension/contradiction. No fluff. Technical prose only.",
+      system: `You write the Executive Summary for a fact-checked research report.
+
+STRICT 3-SENTENCE STRUCTURE (exactly 3 sentences, not more, not fewer):
+  Sentence 1 (headline): Biggest finding backed by a specific NUMBER and at least ONE claim ID.
+    Example: "INT4 KV-cache compression via TurboQuant achieves up to 6x memory reduction on H100 [C1] while reporting <0.1 perplexity delta on Llama-3 benchmarks [C12]."
+  Sentence 2 (tension): Main contradiction or the most important counter-evidence, with claim IDs.
+    Example: "However, Kitty [C57] and Not All Bits Are Equal [C23] report 2-bit quantization degrades reasoning benchmarks by 3.1pp on GSM8K, directly contradicting the zero-loss claims for sub-3-bit regimes."
+  Sentence 3 (uncertainty): The SPECIFIC remaining unknown — a metric + setup that was not measured.
+    Example: "The critical unmeasured combination is WikiText-103 perplexity delta for INT4 TurboQuant on Gemma-2-27B at 32k+ context on 4x RTX 5090."
+
+Rules:
+- Every factual claim MUST cite [C<n>].
+- Use exact numbers from claims (do NOT round them for prose).
+- Never use: significantly, substantially, effective, impressive, important, promising.
+- Never use: "more research is needed" (replaced by the specific-unknown sentence 3).
+
+Output JSON: {"summary": "<three sentences>"}`,
       prompt: `Topic: ${plan.topic}\n\nAssessments: ${assessmentsList}\nOverall confidence: ${(criticReport.overall_confidence * 100).toFixed(0)}%\nCritic summary: ${criticReport.summary}\n\nSample verified claims:\n${claimsSummary}\n\nReturn JSON: {"summary": "..."}`,
       maxRetries: 1,
     });
@@ -80,8 +95,41 @@ export async function synthesize(
       schema: z.object({
         steps: z.array(z.string()).describe("3-5 operational steps for an engineer today, ordered by risk (production-ready first). Cite claim IDs [C#]."),
       }),
-      system:
-        "Generate a concrete deployment sequence. Each step names a specific method/tool from the claims and cites claim IDs like [C1]. Order by risk: production-ready first, experimental last.",
+      system: `You generate a deployment sequence — numbered steps an engineer can execute TODAY in their own environment.
+
+Each step MUST include:
+  - A concrete ACTIONABLE PRIMITIVE: a CLI flag, config value, API call, library invocation, or git clone URL.
+    GOOD:  "Set --kv-cache-dtype=fp8 in vLLM launch args"
+    GOOD:  "Pull ggml-org/llama.cpp PR #21526 to enable TurboQuant KV quantization"
+    BAD:   "Implement FP8 quantization"
+    BAD:   "Deploy TurboQuant"
+  - Named tool/flag/parameter from the claims (not a generic verb).
+  - Expected outcome with a SPECIFIC number from the cited claim.
+  - Citation [C<n>] for the supporting claim.
+
+Step format (each string):
+  "<N>. <Action with exact tool+flag>: <Expected measurable outcome> [C<n>]."
+
+ORDERING rule (strict):
+  Step 1 = most production-ready, zero custom code (vendor-documented).
+  Step N = most experimental, requires custom kernels / unmerged PRs.
+
+GOOD example:
+  1. Enable FP8 KV cache in vLLM via --kv-cache-dtype=fp8: halves KV memory vs BF16 baseline [C33].
+  2. Apply INT4 weight quantization with AWQ via \`llmcompressor\` CLI: reduces total model weights by 75% [C33].
+  3. Replace attention kernel with Marlin fused INT4 from GitHub (vllm-project/llm-compressor@main): +10.9x decoding throughput at batch ≥16 [C25].
+  4. Prototype NVFP4 KV-cache on Blackwell via vllm-project/vllm#38171 (feature branch): targets ~2x FP8 throughput, quality regressions possible [C19].
+
+BAD example:
+  1. Use quantization (too vague).
+  2. Apply TurboQuant (no flag, no measure).
+
+Rules:
+- Generate 4-6 steps, ordered from lowest to highest risk.
+- Never use: significantly, substantially, important, effective, promising.
+- Never skip the citation.
+
+Output JSON: {"steps": ["1. ...", "2. ..."]}`,
       prompt: `Topic: ${plan.topic}\n\nVerified claims:\n${claimsSummary}\n\nReturn JSON: {"steps": ["1. ...", "2. ..."]}`,
       maxRetries: 1,
     });
