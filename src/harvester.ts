@@ -25,26 +25,76 @@ interface DeepResearchResult {
   sources: SearchResult[];
 }
 
-const QUERY_GEN_SYSTEM = `You generate search queries for deep research.
+const QUERY_GEN_SYSTEM = `You generate search queries for deep research. Your output determines what literature the pipeline reads — careless queries = mediocre evidence.
 
-Generate a DIVERSE mix across two channels:
-- 'web' queries: practical, blog-/docs-/GitHub-style phrasing (tutorials, benchmarks, deployment).
-- 'academic' queries: paper-oriented phrasing with method/author/venue language (arxiv-style titles, e.g. "KV cache quantization Llama perplexity evaluation").
+## Two channels with DIFFERENT phrasing styles
 
-Rules:
-- Each query targets a different angle — no overlap.
-- Queries must be specific: real technical terms, model names, tool names, method names, dataset names.
-- For 'academic' channel, prefer phrasing that would match paper titles/abstracts.
-- For 'web' channel, prefer phrasing that would match blog posts, GitHub READMEs, official docs.
-- No vague queries.
-- Output JSON only matching the provided schema.`;
+### 'academic' channel (for arxiv/openreview/aclanthology search)
+Phrasing should match PAPER TITLES and ABSTRACTS. Structure:
+- "<Method name>: <What it does> via <Technique>"  → "KIVI: Tuning-free asymmetric 2-bit quantization for KV cache"
+- "<Observed phenomenon> in <Model/Architecture>" → "Attention-head redundancy in long-context LLMs"
+- "<Technique> for <Problem> in <Domain>"          → "Channel shrinking for KV cache compression in transformers"
 
-const LEARNINGS_SYSTEM = `You extract concise, information-dense learnings from web search results.
-- Each learning is one factual statement with specific numbers, names, dates, metrics when available.
-- Do not invent facts. Only extract what the sources actually say.
-- Include exact metrics (e.g. "70% VRAM reduction", "perplexity delta 0.8"), model names, benchmark scores.
-- Generate follow-up questions that would deepen the research, not repeat what's already known.
-- Output JSON only.`;
+### 'web' channel (for SearXNG Google/DDG search)
+Phrasing should match BLOG POSTS, DOCS, GITHUB READMEs. Structure:
+- "How to <action> with <tool>"                    → "How to configure vLLM KV cache quantization with FP8"
+- "<Tool> <version> <feature> benchmark"           → "vLLM 0.6 paged attention throughput RTX 5090"
+- "<Method> vs <Method> <comparison axis>"         → "AWQ vs GPTQ accuracy perplexity wikitext"
+
+## Strict rules
+
+- Name specific methods (TurboQuant, KIVI, KVQuant, PagedAttention, AWQ, GPTQ, MiniKV, Coupled Quantization), models (Gemma-2/3/4, Llama-3, Qwen), benchmarks (WikiText-103, LongBench, NIAH, GSM8K, MMLU), hardware (RTX 5090, H100, B200), frameworks (vLLM, TensorRT-LLM, Triton).
+- For 'academic' queries: NO imperatives ("how to", "implement"). Use noun phrases as in paper titles.
+- For 'web' queries: DO use imperatives and vendor names when relevant.
+- No duplicate angles. Each query must cover a distinct research sub-question.
+- If you know a canonical paper/method by name, use that name in at least one 'academic' query — it dramatically improves arxiv retrieval.
+
+## Anti-patterns
+
+- "Benchmark Gemma" (too vague)
+- "Quantization research" (no specificity)
+- "Best KV cache method 2026" (listicle-style, bad for both channels)
+
+Output JSON only, matching the schema.`;
+
+const LEARNINGS_SYSTEM = `You extract factual learnings from scraped source content. Each learning is a SELF-CONTAINED sentence with the full context needed to cite it later.
+
+## Required structure for EACH learning
+
+Template (pick whichever fits the source fact):
+  "<Method/Tool> achieves <Metric> of <Value> on <Benchmark/Dataset> for <Model/Setup>"
+  "<Method> reduces <Resource> by <Value> compared to <Baseline>"
+  "<Observation> holds for <Model/Setup> but fails for <Counter-example>"
+  "<Authors/Paper> report <Finding> with <Dataset> in <Year>"
+
+Examples of GOOD learnings:
+  ✓ "KVQuant achieves <0.1 perplexity degradation on WikiText-2 with 3-bit KV quantization for LLaMA-7B"
+  ✓ "INT4 KV-cache reduces peak VRAM by 75% vs FP16 on 32k context for Gemma-2-27B"
+  ✓ "2-bit quantization degrades accuracy on reasoning benchmarks (GSM8K -3.1pp) for Qwen3 per Kitty paper"
+  ✓ "vLLM --kv-cache-dtype=fp8 flag halves KV memory consumption without attention speedup"
+
+Examples of BAD learnings (REJECT, skip):
+  ✗ "Quantization significantly reduces memory"        — no number, no model, no source
+  ✗ "KV cache is important for inference performance"   — tautology, no fact
+  ✗ "Researchers have explored various methods"         — meta-statement, no claim
+  ✗ "FP8 is better than FP16"                           — missing metric/benchmark
+
+## Rules
+
+- Every learning MUST include at least ONE of: numeric metric, model name, benchmark name, or paper/author.
+- Prefer specific numbers over ranges.  "4.7x reduction" > "significant reduction".
+- Do NOT use the words: "significant", "substantial", "effective", "impressive", "important" (unless quoting).
+- Do NOT invent facts. If source doesn't say it, don't write it.
+- NEGATIVE findings matter: if a source reports a failure or limitation ("FP8 lacks fused ops", "2-bit fails for reasoning"), extract it — these are high-value contradictions later.
+- Preserve exact method/metric names as written in source ("NVFP4", not "4-bit FP"; "LongBench", not "long bench").
+
+## Follow-up questions
+
+Generate 3 follow-up questions that dig DEEPER, not broader:
+  ✓ "What is the perplexity delta for 3-bit TurboQuant on Llama-3 vs Gemma-4?"  — specific, deepens
+  ✗ "What are other quantization methods?"                                        — broader, shallow
+
+Output JSON only.`;
 
 export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
   const {
