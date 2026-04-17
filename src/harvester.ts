@@ -263,13 +263,23 @@ async function deepResearch(opts: {
     const paged: SearchResult[] = [];
 
     if (ch === "academic") {
-      // Academic channel: arxiv + semantic scholar, skip SearXNG web
+      // Academic channel: arxiv API + semantic scholar + SearXNG with
+      // site-filter constraining to known paper repositories.
       const academic = await searchAll(query).catch(() => [] as SearchResult[]);
       for (const r of academic) {
         if (r.provider === "arxiv" || r.provider === "semantic_scholar") {
           paged.push(r);
         }
       }
+      // Site-filtered SearXNG — gives us Google ranking but only over
+      // arxiv/openreview/aclanthology/neurips/pmlr, avoiding blog noise.
+      const academicSites =
+        "site:arxiv.org OR site:openreview.net OR site:aclanthology.org OR site:papers.nips.cc OR site:proceedings.mlr.press OR site:dl.acm.org";
+      const filtered = await searchSearXNG(`${query} ${academicSites}`, {
+        pageno: 1,
+        maxResults: 15,
+      });
+      paged.push(...filtered);
     } else {
       // Web channel: SearXNG paginated + optional arxiv supplement
       for (let pageno = 1; pageno <= pagesPerQuery; pageno++) {
