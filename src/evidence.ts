@@ -6,6 +6,42 @@ import type { SourceIndex, SearchResult } from "./schemas/source";
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { scoreSource, tierLabel, sortByTier } from "./sourcing";
+import { z } from "zod";
+
+// Extract a list of distinct methods/frameworks/datasets mentioned in learnings
+// BEFORE main evidence extraction, then inject into the evidence prompt as
+// "MUST mention at least one claim for each of these".
+async function extractMethodPool(learnings: string[]): Promise<string[]> {
+  if (learnings.length === 0) return [];
+  const prompt = `Below are factual learnings from a research task. Identify ALL distinct methods, frameworks, models, benchmarks, and datasets mentioned by name. Do NOT include generic terms ("quantization", "inference") — only NAMED entities (e.g. "TurboQuant", "Llama-3", "WikiText-103", "vLLM", "NVFP4").
+
+Return JSON: {"entities": ["Name1", "Name2", ...]}
+
+Learnings:
+${learnings.map((l, i) => `L${i + 1}. ${l.slice(0, 300)}`).join("\n")}`;
+
+  try {
+    const { object } = await generateJson({
+      schema: z.object({ entities: z.array(z.string()) }),
+      system:
+        "You extract named technical entities from research notes. Only include proper-noun methods/models/benchmarks/datasets/frameworks. Be exhaustive — include rare and common alike.",
+      prompt,
+      temperature: 0,
+      maxRetries: 1,
+      endpoint: config.endpoints.evidence,
+    });
+    // Dedup case-insensitive, preserve longest form
+    const dedup = new Map<string, string>();
+    for (const e of object.entities) {
+      const key = e.toLowerCase();
+      if (!dedup.has(key) || dedup.get(key)!.length < e.length) dedup.set(key, e);
+    }
+    return Array.from(dedup.values()).filter((e) => e.length >= 2 && e.length <= 60);
+  } catch (err: any) {
+    console.warn(`[evidence] method-pool extraction failed: ${err.message?.slice(0, 80)}`);
+    return [];
+  }
+}
 
 const EVIDENCE_SYSTEM = `You are an evidence extraction specialist. Convert harvester-extracted LEARNINGS into formal CLAIMS linked to specific sources.
 
@@ -118,6 +154,15 @@ export async function extractEvidence(
       continue;
     }
 
+    // H5: extract named-entity pool BEFORE evidence extraction so the
+    // evidence prompt can explicitly mandate coverage of each entity.
+    const methodPool = await extractMethodPool(learnings);
+    if (methodPool.length > 0) {
+      console.log(
+        `[evidence] ${sourceIndex.task_id}: method-pool (${methodPool.length}): ${methodPool.slice(0, 8).join(", ")}${methodPool.length > 8 ? "..." : ""}`
+      );
+    }
+
     // Build compact source catalog (title + url + tier), sorted primary-first
     const sortedResults = sortByTier(sourceIndex.results, (r) => r.url);
     const sourceCatalog = sortedResults
@@ -134,10 +179,14 @@ export async function extractEvidence(
       .map((l, i) => `L${i + 1}. ${l}`)
       .join("\n");
 
+    const methodPoolBlock = methodPool.length > 0
+      ? `\nREQUIRED COVERAGE — every one of these named entities from the learnings MUST be cited by at least one claim if the learnings support it. Miss none:\n${methodPool.map((m) => `  - ${m}`).join("\n")}\n`
+      : "";
+
     const prompt = `Hypothesis ${hypothesis.id}: "${hypothesis.statement}"
 
 Task: ${sourceIndex.task_id}
-
+${methodPoolBlock}
 LEARNINGS extracted by harvester from full scraped content (${learnings.length}):
 ${learningsBlock}
 
