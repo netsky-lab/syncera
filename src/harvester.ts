@@ -263,11 +263,15 @@ async function deepResearch(opts: {
     const paged: SearchResult[] = [];
 
     if (ch === "academic") {
-      // Academic channel: arxiv API + semantic scholar + SearXNG with
-      // site-filter constraining to known paper repositories.
+      // Academic channel: primary-only providers + site-filtered SearXNG.
       const academic = await searchAll(query).catch(() => [] as SearchResult[]);
       for (const r of academic) {
-        if (r.provider === "arxiv" || r.provider === "semantic_scholar") {
+        // Keep all primary-source providers (not general web)
+        if (
+          r.provider === "arxiv" ||
+          r.provider === "openalex" ||
+          r.provider === "semantic_scholar"
+        ) {
           paged.push(r);
         }
       }

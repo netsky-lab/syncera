@@ -13,6 +13,7 @@ export type SourceTier = 0 | 1 | 2 | 3 | 4 | 5;
 const PRIMARY_HOSTS = [
   "arxiv.org",
   "openreview.net",
+  "openalex.org",
   "aclanthology.org",
   "neurips.cc",
   "proceedings.neurips.cc",

@@ -91,6 +91,94 @@ function extractTag(xml: string, tag: string): string | null {
   return match ? match[1] : null;
 }
 
+// --- OpenAlex (free, no key, 250M+ papers) ---
+
+export async function searchOpenAlex(
+  query: string,
+  maxResults = 15
+): Promise<SearchResult[]> {
+  const encoded = encodeURIComponent(query);
+  const url = `https://api.openalex.org/works?search=${encoded}&per-page=${maxResults}&filter=has_abstract:true`;
+
+  const resp = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "research-lab/1.0 (mailto:research-lab@local)",
+    },
+  });
+  if (!resp.ok) {
+    if (resp.status !== 429) console.warn(`[openalex] Error ${resp.status}`);
+    return [];
+  }
+  const data = await resp.json();
+  return (data.results ?? []).map((p: any) => {
+    const url =
+      p.open_access?.oa_url ||
+      p.primary_location?.landing_page_url ||
+      (p.doi ? `https://doi.org/${String(p.doi).replace(/^https:\/\/doi\.org\//, "")}` : "") ||
+      p.id;
+    const title = p.title ?? p.display_name ?? "";
+    const year = p.publication_year;
+    const citations = p.cited_by_count;
+    const abstract = invertAbstract(p.abstract_inverted_index);
+    return {
+      title,
+      url,
+      snippet: [
+        abstract?.slice(0, 400) ?? "",
+        year ? `(${year})` : "",
+        citations ? `[${citations} citations]` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      provider: "openalex",
+      query,
+    };
+  });
+}
+
+function invertAbstract(inv: Record<string, number[]> | undefined | null): string {
+  if (!inv) return "";
+  const positions: [number, string][] = [];
+  for (const [word, posArr] of Object.entries(inv)) {
+    for (const p of posArr) positions.push([p, word]);
+  }
+  positions.sort((a, b) => a[0] - b[0]);
+  return positions.map(([, w]) => w).join(" ");
+}
+
+// --- OpenReview (free, no key, venue-specific conference papers) ---
+
+export async function searchOpenReview(
+  query: string,
+  maxResults = 10
+): Promise<SearchResult[]> {
+  const encoded = encodeURIComponent(query);
+  const url = `https://api2.openreview.net/notes/search?term=${encoded}&source=forum&type=all&limit=${maxResults}`;
+
+  const resp = await fetch(url, {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) {
+    if (resp.status !== 429) console.warn(`[openreview] Error ${resp.status}`);
+    return [];
+  }
+  const data = await resp.json();
+  return (data.notes ?? []).map((n: any) => {
+    const content = n.content ?? {};
+    const title = (content.title?.value ?? content.title ?? "").toString();
+    const abstract = (content.abstract?.value ?? content.abstract ?? "").toString();
+    const forumId = n.forum ?? n.id;
+    return {
+      title,
+      url: `https://openreview.net/forum?id=${forumId}`,
+      snippet: abstract.slice(0, 400),
+      provider: "openreview",
+      query,
+    };
+  });
+}
+
 // --- Semantic Scholar (academic, free, rate-limited) ---
 
 export async function searchSemanticScholar(
@@ -154,15 +242,16 @@ export async function searchAll(
   query: string,
   maxResults = 20
 ): Promise<SearchResult[]> {
-  const [web, arxiv] = await Promise.all([
+  const [web, arxiv, openalex] = await Promise.all([
     searchSearXNG(query, { maxResults }),
-    searchArxiv(query, 5),
+    searchArxiv(query, 15),
+    searchOpenAlex(query, 15),
   ]);
 
   const s2 = await searchSemanticScholar(query, 5);
   await sleep(1200); // respect S2 rate limit
 
-  const flat = [...web, ...arxiv, ...s2];
+  const flat = [...web, ...arxiv, ...openalex, ...s2];
 
   // Deduplicate by URL
   const seen = new Set<string>();
