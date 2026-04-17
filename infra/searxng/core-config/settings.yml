@@ -1,0 +1,26 @@
+use_default_settings: true
+
+general:
+  instance_name: "Research Lab"
+
+server:
+  base_url: "http://localhost:8888/"
+  secret_key: "research-lab-dev-change-me"
+  limiter: false
+  image_proxy: false
+  public_instance: false
+  method: "GET"
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  formats:
+    - html
+    - json
+
+outgoing:
+  request_timeout: 10.0
+  max_request_timeout: 15.0
+  pool_connections: 100
+  pool_maxsize: 20
