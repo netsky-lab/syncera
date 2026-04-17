@@ -39,7 +39,7 @@ export async function searchSearXNG(
 
 export async function searchArxiv(
   query: string,
-  maxResults = 5
+  maxResults = 15
 ): Promise<SearchResult[]> {
   const encoded = encodeURIComponent(query);
   const url = `http://export.arxiv.org/api/query?search_query=all:${encoded}&max_results=${maxResults}&sortBy=relevance`;
@@ -51,7 +51,13 @@ export async function searchArxiv(
   }
 
   const xml = await resp.text();
-  return parseArxivXml(xml, query);
+  // Rewrite abstract URLs to HTML URLs — Jina Reader gets full paper text
+  // from /html/<id> endpoint instead of ~400-char abstract summary.
+  const entries = parseArxivXml(xml, query);
+  return entries.map((e) => ({
+    ...e,
+    url: e.url.replace(/\/abs\//, "/html/"),
+  }));
 }
 
 function parseArxivXml(xml: string, query: string): SearchResult[] {
