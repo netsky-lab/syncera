@@ -66,7 +66,11 @@ async function main() {
   } else {
     console.log("[phase:harvest] Collecting sources...");
     const t1 = Date.now();
-    const sources = await harvest({ plan, projectDir });
+    const sources = await harvest({
+      plan,
+      projectDir,
+      force: process.argv.includes("--reharvest"),
+    });
     const total = sources.reduce((n, s) => n + s.results.length, 0);
     console.log(`[phase:harvest] Done in ${((Date.now() - t1) / 1000).toFixed(1)}s — ${total} sources\n`);
   }
