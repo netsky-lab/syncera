@@ -101,9 +101,9 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
   const {
     plan,
     projectDir,
-    breadth = 10,
-    depth = 2,
-    pagesPerQuery = 3,
+    breadth = 6,
+    depth = 1,
+    pagesPerQuery = 2,
     urlsPerQuery = 6,
     readConcurrency = 4,
   } = input;
