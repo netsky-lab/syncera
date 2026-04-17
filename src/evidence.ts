@@ -6,21 +6,41 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { scoreSource, tierLabel, sortByTier } from "./sourcing";
 
-const EVIDENCE_SYSTEM = `You are an evidence extraction specialist. You receive HARVESTER-EXTRACTED LEARNINGS (already distilled factual statements from full scraped source content) plus the list of source URLs/titles they came from.
+const EVIDENCE_SYSTEM = `You are an evidence extraction specialist. Convert harvester-extracted LEARNINGS into formal CLAIMS linked to specific sources.
 
-Your job: convert these learnings into formal claims linked to specific sources.
+## A claim vs a learning
 
-Rules:
-- Extract a COMPREHENSIVE set of claims — aim for 15-25 claims per task. Err toward MORE claims, not fewer.
-- PRIORITIZE DIVERSITY: if multiple learnings mention distinct methods, frameworks, models, or benchmarks (e.g. KIVI, KVQuant, MiniKV, PagedAttention, GPTQ, AWQ, TurboQuant, TensorRT-LLM, vLLM, WikiText, GSM8K, LongBench), create a SEPARATE claim for each — do NOT merge them.
-- Include claims even about methods with only 1-2 supporting learnings. Rare-but-specific claims are valuable evidence.
-- Each claim must cite a specific source URL (from the list).
-- STRONGLY PREFER sources tagged [primary] or [official] over [blog] or [community]. The catalog is sorted best-first.
-- Use exact_quote = the learning text verbatim.
-- Mark each claim as "supports", "contradicts", or "neutral" relative to the hypothesis.
-- Set confidence 0.0-1.0 based on specificity.
-- Do NOT invent claims. Only use what's in the learnings list.
-- Output JSON only matching the schema.`;
+- A learning is just a fact ("KIVI achieves 2-bit quantization with near-zero perplexity loss").
+- A claim is a learning POSITIONED AGAINST the hypothesis ("supports H1", "contradicts H1", or "neutral context"), tied to the specific source URL that contains it, with a confidence score.
+
+## Output requirements
+
+1. COVERAGE: Extract 15-25 claims per task — one claim per DISTINCT fact. Do NOT merge different methods/results into a single claim.
+2. DIVERSITY: If learnings mention distinct methods (TurboQuant, KIVI, KVQuant, MiniKV, KV-Compress, CSKV, Kitty, AKVQ-VL, Coupled Quantization, PagedAttention, R-KV, Q4_K_M, AWQ, GPTQ, NVFP4, FP8, INT4, BF16), create a SEPARATE claim for EACH — list at the top of your mental model and check them off.
+3. NEGATIVE CLAIMS REQUIRED: For each task, include AT LEAST 1 claim of type "contradicts" if ANY learning reports a failure, limitation, counter-example, or negative result. Research without contradictions is suspect.
+4. NUMERIC PRIORITY: Every claim SHOULD contain a specific number, model name, or dataset name. If a learning has no specifics, rank its confidence <= 0.5 and consider skipping.
+5. SOURCE ATTRIBUTION:
+   - Each claim cites EXACTLY ONE source URL.
+   - STRONGLY PREFER [primary] > [official] > [code] > [blog] > [community]. Catalog is sorted best-first.
+   - Use exact_quote = the learning text VERBATIM (do not paraphrase).
+   - title = the source's title from the catalog.
+
+## Confidence calibration
+
+- 0.9-1.0: Exact number from peer-reviewed paper on canonical benchmark for named model.
+- 0.7-0.9: Specific claim with number OR named benchmark, from primary source.
+- 0.5-0.7: Qualitative but specific (named method, named model, but no benchmark number).
+- 0.3-0.5: Single-source blog claim, vague benchmark.
+- <0.3: Filter out — do not extract.
+
+## Anti-patterns
+
+- DO NOT invent facts not present in learnings.
+- DO NOT merge "INT4 quantization works for Llama AND Gemma" into one claim if source only says it for Llama.
+- DO NOT extract claims without at least one from the method-pool when learnings contain them.
+- DO NOT pad confidence scores (vague = low score).
+
+Output JSON only matching the schema.`;
 
 function hashUrl(url: string): string {
   let h = 0;
