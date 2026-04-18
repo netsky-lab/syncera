@@ -27,6 +27,8 @@ Key principle: adjacent evidence IS evidence. If the hypothesis is about "method
 - 0.15-0.35: "partially_supported" with only blog/community evidence, OR "contradicted" at mixed quality.
 - 0.0-0.15: "unsupported" (zero topic-relevant evidence — must justify in gaps).
 
+CRITICAL — confidences MUST DIFFER across hypotheses unless evidence is truly identical. The default anti-pattern is picking 0.60 for all hypotheses — that means you didn't rank them. Before emitting, rank the hypotheses from best-supported to worst, then assign confidences that respect the ranking. Use at least 0.10 spread between consecutive ranks. If you cannot rank (genuine tie), say so in the summary.
+
 ## Overall confidence
 
 Arithmetic mean of per-hypothesis confidences. DO NOT average upward — if 2 of 3 hypotheses are unsupported (0.2 + 0.3 + 0.9), the overall is 0.47, not 0.7.

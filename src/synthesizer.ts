@@ -131,6 +131,12 @@ Rules:
 - Never use: significantly, substantially, important, effective, promising.
 - Never skip the citation.
 
+FLAG AUTHENTICITY (critical):
+- A CLI flag/API/config value belongs in a step ONLY IF the verbatim token (e.g. --kv-cache-dtype, KV_CACHE_BITS=4, --quantization awq) appears inside the cited claim's statement. Do NOT invent plausible-looking flags that the claim does not contain.
+- If the cited claim describes a method/capability but NAMES NO flag, write the step without inventing one. Example: "Apply KVQuant 3-bit quantization following the KVQuant paper (no upstream vLLM flag as of source; use the reference implementation at github.com/SqueezeAILab/KVQuant) [C17]."
+- Prefer claims whose statement contains "--", "=", github.com/, or a config key — those are the claims carrying real primitives. For methods without a documented flag, the step should reference the library / repo / paper, not fabricate a flag.
+- FORBIDDEN: invented flags like "--kv-cache-bits=3.5", "--kv-cache-quantization=kivi", "--kv-cache-dtype=kvquant". None of these exist in vLLM; saying so damages credibility more than a slightly less specific step.
+
 Output JSON: {"steps": ["1. ...", "2. ..."]}`,
       prompt: `Topic: ${plan.topic}\n\nVerified claims:\n${claimsSummary}\n\nReturn JSON: {"steps": ["1. ...", "2. ..."]}`,
       maxRetries: 1,
@@ -149,6 +155,38 @@ Output JSON: {"steps": ["1. ...", "2. ..."]}`,
   lines.push(`*Overall confidence: ${(criticReport.overall_confidence * 100).toFixed(0)}%*`);
   lines.push(`*Evidence: ${verified.length} verified claims${rejectedIds.size ? `, ${rejectedIds.size} rejected` : ""}*`, "");
 
+  // --- Call 5: Introduction paragraph (problem framing) ---
+  let introduction = "";
+  try {
+    const { object } = await generateJson({
+      schema: z.object({ introduction: z.string() }),
+      system: `You write the Introduction for a fact-checked research report — one paragraph (4-6 sentences) of plain-English problem framing.
+
+Structure:
+  1. State the practical problem as a reader would encounter it.
+  2. Explain WHY it matters (what breaks / what costs / what's at stake).
+  3. Name the main approach families the report will survey (from hypotheses).
+  4. Set the bar: what does "answer" mean for this topic (concrete metrics).
+
+Rules:
+- Plain prose, no bullets, no citations (citations are reserved for the hypothesis sections).
+- Do not summarize findings — that's the Executive Summary's job.
+- Write for a senior engineer or researcher, not a general audience.
+- Never use: significantly, substantially, effective, impressive, important, promising.
+
+Output JSON: {"introduction": "<paragraph>"}`,
+      prompt: `Topic: ${plan.topic}\n\nHypotheses the report will test:\n${plan.hypotheses.map((h) => `${h.id}: ${h.statement}`).join("\n")}\n\nReturn JSON: {"introduction": "..."}`,
+      maxRetries: 1,
+      endpoint: config.endpoints.synth,
+    });
+    introduction = object.introduction;
+  } catch (err: any) {
+    console.warn(`[synth] introduction fallback: ${err.message?.slice(0, 80)}`);
+  }
+
+  if (introduction) {
+    lines.push("## Introduction", "", introduction, "");
+  }
   lines.push("## Executive Summary", "", execSummary, "");
 
   // --- Call 3: Per-hypothesis narrative analysis (one paragraph each) ---
@@ -368,6 +406,45 @@ Return JSON: {"methods": [{"name":"...","headline_metric":"...","limitation":"..
     lines.push(`${step.startsWith(/\d/.exec(step)?.[0] ?? "X") ? step : "- " + step}`);
   }
   lines.push("");
+
+  // --- Call 6: Reasoned recommendation (conclusion paragraph) ---
+  let recommendation = "";
+  try {
+    const assessmentsBullets = criticReport.hypothesis_assessments
+      .map(
+        (a: any) =>
+          `${a.hypothesis_id}: ${a.status} (${(a.confidence * 100).toFixed(0)}%) — supports: ${(a.supporting_claims ?? []).join(",")} gaps: ${(a.gaps ?? []).join("; ")}`
+      )
+      .join("\n");
+    const { object } = await generateJson({
+      schema: z.object({ recommendation: z.string() }),
+      system: `You write a Recommendation paragraph (4-6 sentences) that CLOSES a fact-checked research report. This is the reasoned verdict — what would you actually do today, given what the evidence shows and doesn't show.
+
+Structure (as prose, not bullets):
+  1. The RECOMMENDED PRIMARY APPROACH: name the method/stack that is best-supported today, with 1-2 [C#] citations. Include a specific config/number.
+  2. The REASONING: why this approach over alternatives — what makes it dominant given the constraint set.
+  3. The FALLBACK: if the primary approach fails (missing kernel, regression at target context, etc.), what is the SECOND-CHOICE, with a citation.
+  4. The TRIGGER for revisiting: what specific measurement should override the recommendation (e.g. "if WikiText-103 ppl delta on Gemma exceeds 2.5% at 128k, fall back to X").
+
+Rules:
+- Every factual claim needs a [C#] citation.
+- Pick ACTUAL methods from the evidence pool — do not invent.
+- Never use: significantly, substantially, effective, impressive, important, promising.
+- Do not restate the hypothesis or executive summary.
+
+Output JSON: {"recommendation": "<paragraph>"}`,
+      prompt: `Topic: ${plan.topic}\n\nHypothesis assessments:\n${assessmentsBullets}\n\nContradictions already surfaced: ${(criticReport.contradictions ?? []).length}\n\nReturn JSON: {"recommendation": "..."}`,
+      maxRetries: 1,
+      endpoint: config.endpoints.synth,
+    });
+    recommendation = object.recommendation;
+  } catch (err: any) {
+    console.warn(`[synth] recommendation fallback: ${err.message?.slice(0, 80)}`);
+  }
+
+  if (recommendation) {
+    lines.push("## Recommendation", "", recommendation, "");
+  }
 
   // Methodology
   lines.push("## Methodology Note", "");
