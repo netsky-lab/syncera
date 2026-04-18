@@ -283,6 +283,76 @@ Write the analytical paragraph. Return JSON: {"analysis": "..."}`,
     }
   }
 
+  // --- Call 4: Method comparison table (one markdown table) ---
+  const allClaimsForTable = verified
+    .slice(0, 80)
+    .map((c) => `[${c.id}] ${c.statement}`)
+    .join("\n");
+  let comparisonTable = "";
+  try {
+    const { object } = await generateJson({
+      schema: z.object({
+        methods: z
+          .array(
+            z.object({
+              name: z.string(),
+              headline_metric: z.string(),
+              limitation: z.string(),
+              citations: z.array(z.string()),
+            })
+          )
+          .describe("4-7 most-cited methods across the verified evidence, one row each"),
+      }),
+      system: `You extract a comparison table across methods from the verified evidence. Output the 4-7 most concretely-measured methods — those with numerical results, not just mentions.
+
+For each method row:
+  - name: exact method name (TurboQuant, KIVI, KVQuant, AWQ, GPTQ, CommVQ, RotorQuant, FP8 KV, etc.). No generic labels.
+  - headline_metric: the single most important measured result from the evidence pool — format "<number> <metric> on <benchmark/model>". Use EXACT numbers.
+    GOOD: "87.5% FP16 cache reduction on LLaMA-3.1-8B"
+    GOOD: "<0.1 perplexity degradation on Wikitext-2 (3-bit)"
+    BAD: "good compression with minor quality loss"
+  - limitation: the TRADE-OFF, from claims or the contradictions list. One short phrase.
+    GOOD: "Accuracy drops on reasoning benchmarks below 3 bits"
+    GOOD: "No fused kernel for SM120 (RTX 5090) yet"
+    BAD: "Some quality concerns"
+  - citations: array of [C#] IDs from the evidence pool that support this row. Include at least 1, prefer 2.
+
+Rules:
+- Pick methods that appear in MULTIPLE claims with numbers. Methods mentioned only once should not be in the table.
+- If a method has contradictory reports, mention both in the metric or limitation with citations.
+- Do NOT fabricate metrics not in the evidence.
+- Never use: significantly, substantially, important, promising.
+
+Output JSON: {"methods": [...]}`,
+      prompt: `Topic: ${plan.topic}
+
+Verified claims pool:
+${allClaimsForTable}
+
+Return JSON: {"methods": [{"name":"...","headline_metric":"...","limitation":"...","citations":["C1","C2"]}]}`,
+      maxRetries: 1,
+      endpoint: config.endpoints.synth,
+    });
+    const rows = object.methods
+      .slice(0, 7)
+      .map((m) => {
+        const cites = m.citations.map((c) => (c.startsWith("[") ? c : `[${c}]`)).join(", ");
+        const clean = (s: string) => s.replace(/\|/g, "\\|");
+        return `| ${clean(m.name)} | ${clean(m.headline_metric)} | ${clean(m.limitation)} | ${cites} |`;
+      })
+      .join("\n");
+    comparisonTable =
+      "| Method | Headline metric | Main limitation | Citations |\n" +
+      "|---|---|---|---|\n" +
+      rows;
+  } catch (err: any) {
+    console.warn(`[synth] comparison table fallback: ${err.message?.slice(0, 80)}`);
+  }
+
+  if (comparisonTable) {
+    lines.push("## Method Comparison", "", comparisonTable, "");
+  }
+
   // Contradictions
   if (criticReport.contradictions?.length) {
     lines.push("## Contradictions", "");
@@ -302,7 +372,7 @@ Write the analytical paragraph. Return JSON: {"analysis": "..."}`,
   // Methodology
   lines.push("## Methodology Note", "");
   lines.push(
-    `Research collected via SearXNG + Arxiv + Semantic Scholar (breadth 10, depth 2, pagination 3). Pages scraped via Jina Reader. Learnings extracted by Gemma 4 26B. Claims extracted from learnings, then FACT-CHECKED: each claim's URL liveness verified and claim semantic consistency checked against scraped source content. Rejected claims are listed separately and NOT cited in this report. Sources weighted: primary papers > official docs > GitHub > blogs > community.`,
+    `Research collected via SearXNG + Arxiv + OpenAlex + Semantic Scholar across ${plan.hypotheses.length} hypotheses and ${plan.tasks.length} tasks (breadth 6 queries per task, depth 1 deepening, pagination 2 SearXNG pages per query, top 6 tier-sorted URLs per query). Pages scraped via Jina Reader. Learnings extracted by ${config.endpoints.evidence.model}; claims extracted from learnings, then FACT-CHECKED in three layers: (1) URL liveness via HTTP GET with Range header, (2) keyword-based quote consistency against the scraped source content, (3) adversarial LLM review for overreach / out-of-context / misread / fabrication. ${rejectedIds.size} of ${verified.length + rejectedIds.size} candidate claims were rejected and are NOT cited in this report. Sources weighted: primary papers (arxiv/openreview/aclanthology/openalex/s2) > official docs > GitHub > blogs > community.`,
     ""
   );
 
