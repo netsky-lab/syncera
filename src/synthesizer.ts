@@ -265,6 +265,14 @@ Rules:
 - If evidence on the exact target is absent, acknowledge it ONCE as part of sentence 4, then pivot back to what IS known from adjacent claims.
 - If the evidence pool has 15+ claims, cite 5-6; if it has 5-8 claims, cite 3-4.
 
+OPENING VARIETY (anti-repetition):
+- Do NOT start every paragraph the same way. FORBIDDEN openings: "The preponderance of evidence...", "The available evidence...", "Evidence indicates...". These are formulaic.
+- Instead, open with one of: a specific number, a named method+result, a named contradiction, a named hardware constraint, or a question the evidence answers. Examples:
+  "TurboQuant reports a 6x KV-cache reduction on Gemma models [C65], anchoring the upper bound..."
+  "Two RTX 5090 cards cannot fit Gemma-3-27B FP16 even at 4k context..."
+  "A direct split appears in the evidence: [C12] reports 10x compression while [C27] caps at 3x..."
+- Do NOT close every paragraph with "X currently demonstrates the strongest...". Vary the closing: sometimes name the winner, sometimes name the decisive gap, sometimes name the next experiment.
+
 Output JSON: {"analysis": "<paragraph>"}`,
         prompt: `Hypothesis ${h.id}: ${h.statement}
 Acceptance criteria: ${h.acceptance_criteria.map((c) => `${c.name}: ${c.threshold}`).join("; ")}
