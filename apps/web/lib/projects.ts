@@ -1,7 +1,17 @@
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join } from "path";
 
-const PROJECTS_DIR = join(process.cwd(), "..", "..", "projects");
+// Resolve projects directory:
+//   1. PROJECTS_DIR env var wins (explicit override).
+//   2. If cwd/projects exists, use that (production standalone container).
+//   3. Otherwise walk up to monorepo root (dev mode where cwd=apps/web).
+const PROJECTS_DIR = (() => {
+  if (process.env.PROJECTS_DIR) return process.env.PROJECTS_DIR;
+  const cwd = process.cwd();
+  const cwdProjects = join(cwd, "projects");
+  if (existsSync(cwdProjects)) return cwdProjects;
+  return join(cwd, "..", "..", "projects");
+})();
 
 export type Schema = "question_first" | "hypothesis_first" | "empty";
 

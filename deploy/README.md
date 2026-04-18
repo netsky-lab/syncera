@@ -43,6 +43,11 @@ Minimal self-hosted deployment of the read-only web UI. The research pipeline
    rsync -avh --delete projects/ <server>:research-lab/projects/
    ```
 
+   If you also rsync the source tree, use `--exclude /projects` (with
+   the leading slash) — plain `--exclude projects` would also strip
+   `apps/web/app/projects/`, the route directory for the project
+   viewer, and leave the container unable to render any project page.
+
 4. Build and start:
 
    ```
