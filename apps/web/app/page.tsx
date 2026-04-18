@@ -26,15 +26,18 @@ function ConfidenceBar({ value }: { value: number }) {
 
 export default function DashboardPage() {
   const projects = listProjects();
+  // Aggregate across BOTH schemas — question-first uses questions+facts,
+  // legacy hypothesis-first uses hypotheses+claims. Surface them both under
+  // unified labels so totals row stays meaningful regardless of mix.
   const totals = {
     projects: projects.length,
-    hypotheses: projects.reduce((n, p) => n + p.hypotheses, 0),
-    claims: projects.reduce((n, p) => n + p.claims, 0),
+    topics: projects.reduce(
+      (n, p) => n + Math.max(p.questions, p.hypotheses),
+      0
+    ),
+    findings: projects.reduce((n, p) => n + Math.max(p.facts, p.claims), 0),
     reports: projects.filter((p) => p.hasReport).length,
-    avgConfidence:
-      projects.length > 0
-        ? projects.reduce((n, p) => n + p.confidence, 0) / projects.length
-        : 0,
+    sources: projects.reduce((n, p) => n + p.sources, 0),
   };
 
   return (
@@ -58,28 +61,25 @@ export default function DashboardPage() {
         </Card>
         <Card className="shadow-none">
           <CardContent className="pt-5 pb-4">
-            <div className="text-2xl font-semibold tabular-nums">{totals.hypotheses}</div>
+            <div className="text-2xl font-semibold tabular-nums">{totals.topics}</div>
             <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">
-              Hypotheses
+              Questions / Hypotheses
             </div>
           </CardContent>
         </Card>
         <Card className="shadow-none">
           <CardContent className="pt-5 pb-4">
-            <div className="text-2xl font-semibold tabular-nums">{totals.claims}</div>
+            <div className="text-2xl font-semibold tabular-nums">{totals.findings}</div>
             <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">
-              Claims extracted
+              Facts / Claims
             </div>
           </CardContent>
         </Card>
         <Card className="shadow-none">
           <CardContent className="pt-5 pb-4">
-            <div className="text-2xl font-semibold tabular-nums">
-              {Math.round(totals.avgConfidence * 100)}
-              <span className="text-base text-muted-foreground ml-0.5">%</span>
-            </div>
+            <div className="text-2xl font-semibold tabular-nums">{totals.sources}</div>
             <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">
-              Avg confidence
+              Sources collected
             </div>
           </CardContent>
         </Card>
@@ -116,26 +116,38 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-5 shrink-0">
                       <div className="text-center min-w-[44px]">
                         <div className="text-sm font-semibold tabular-nums">
-                          {p.hypotheses}
+                          {p.schema === "question_first" ? p.questions : p.hypotheses}
                         </div>
                         <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                          hyp
+                          {p.schema === "question_first" ? "q" : "hyp"}
                         </div>
                       </div>
                       <div className="text-center min-w-[44px]">
                         <div className="text-sm font-semibold tabular-nums">
-                          {p.claims}
+                          {p.schema === "question_first" ? p.facts : p.claims}
                         </div>
                         <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                          claims
+                          {p.schema === "question_first" ? "facts" : "claims"}
                         </div>
                       </div>
-                      {p.confidence > 0 ? (
+                      <div className="text-center min-w-[52px]">
+                        <div className="text-sm font-semibold tabular-nums">
+                          {p.sources}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                          sources
+                        </div>
+                      </div>
+                      {p.schema === "hypothesis_first" && p.confidence > 0 ? (
                         <ConfidenceBar value={p.confidence} />
-                      ) : (
+                      ) : p.schema === "hypothesis_first" ? (
                         <span className="text-xs text-muted-foreground italic w-28 text-right">
                           pending
                         </span>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px]">
+                          {p.schema === "question_first" ? "question-first" : "empty"}
+                        </Badge>
                       )}
                       {p.hasReport && (
                         <Badge className="bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20">
