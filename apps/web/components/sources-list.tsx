@@ -15,10 +15,23 @@ interface SourceItem {
 }
 
 interface TaskSources {
-  task_id: string;
-  hypothesis_id: string;
+  // Legacy (hypothesis-first) fields
+  task_id?: string;
+  hypothesis_id?: string;
+  // Question-first fields
+  subquestion_id?: string;
+  question_id?: string;
   results: SourceItem[];
   learnings?: string[];
+}
+
+// Normalize either legacy or question-first unit to a single id we can use
+// for React keys, filtering, and display.
+function unitId(t: TaskSources): string {
+  return t.task_id ?? t.subquestion_id ?? "";
+}
+function parentId(t: TaskSources): string {
+  return t.hypothesis_id ?? t.question_id ?? "";
 }
 
 export function SourcesList({
@@ -38,8 +51,9 @@ export function SourcesList({
   const allSources = useMemo(() => {
     const items: (SourceItem & { task_id: string })[] = [];
     for (const t of tasks) {
+      const id = unitId(t);
       for (const r of t.results) {
-        items.push({ ...r, task_id: t.task_id });
+        items.push({ ...r, task_id: id });
       }
     }
     return items;
@@ -150,22 +164,23 @@ export function SourcesList({
             >
               all
             </button>
-            {tasks.map((t) => (
-              <button
-                key={t.task_id}
-                onClick={() =>
-                  setTaskFilter(t.task_id === taskFilter ? null : t.task_id)
-                }
-                className={
-                  "px-2 py-0.5 rounded border text-[10px] font-mono " +
-                  (taskFilter === t.task_id
-                    ? "bg-primary/20 border-primary/40 text-primary"
-                    : "border-border hover:bg-muted")
-                }
-              >
-                {t.task_id} ({t.results.length})
-              </button>
-            ))}
+            {tasks.map((t) => {
+              const id = unitId(t);
+              return (
+                <button
+                  key={id}
+                  onClick={() => setTaskFilter(id === taskFilter ? null : id)}
+                  className={
+                    "px-2 py-0.5 rounded border text-[10px] font-mono " +
+                    (taskFilter === id
+                      ? "bg-primary/20 border-primary/40 text-primary"
+                      : "border-border hover:bg-muted")
+                  }
+                >
+                  {id} ({t.results.length})
+                </button>
+              );
+            })}
           </div>
           <div className="text-[11px] text-muted-foreground font-mono">
             showing {filtered.length} / {allSources.length}
