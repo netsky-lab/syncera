@@ -139,9 +139,13 @@ export async function extractEvidence(
 ): Promise<Fact[]> {
   const sourcesDir = join(projectDir, "sources");
   const contentDir = join(sourcesDir, "content");
-  // Subquestion cache files follow pattern Q<n>-S<m>.json or Q<n>.<m>.json
+  // Subquestion cache files — the LLM picks the ID shape, so accept any
+  // filename that looks like a research-unit: starts with Q or SQ (any
+  // case), has digits + optional separators + digits, and ends in .json.
+  // Known shapes so far: Q1.json, Q1.1.json, Q1-S1.json, SQ1.1.json.
+  // Also accept legacy T<n>.json (hypothesis-first re-runs).
   const sourceFiles = readdirSync(sourcesDir).filter(
-    (f) => /^Q\d+([-.]S?\d+)?\.json$/.test(f)
+    (f) => /^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)
   );
 
   // Run subquestions in parallel with bounded concurrency.

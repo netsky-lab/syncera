@@ -120,7 +120,7 @@ export function getProject(slug: string): ProjectDetail | null {
   const units: any[] = [];
   if (existsSync(sourcesDir)) {
     const files = readdirSync(sourcesDir).filter(
-      (f) => /^(T\d+|Q\d+([-.]S?\d+)?)\.json$/.test(f)
+      (f) => /^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)
     );
     files.sort();
     for (const f of files) {
