@@ -196,9 +196,11 @@ Output JSON: {"introduction": "<paragraph>"}`,
   lines.push("## Executive Summary", "", execSummary, "");
 
   // --- Call 3: Per-hypothesis narrative analysis (one paragraph each) ---
+  // Runs all hypotheses in parallel — each call is independent; endpoint
+  // concurrency (5 slots) handles 4 simultaneously with room to spare.
   const analysisMap = new Map<string, string>();
   const verifiedById = new Map(verified.map((c) => [c.id, c]));
-  for (const h of plan.hypotheses) {
+  await Promise.all(plan.hypotheses.map(async (h) => {
     const a = criticReport.hypothesis_assessments.find(
       (x: any) => x.hypothesis_id === h.id
     );
@@ -290,7 +292,7 @@ Write the analytical paragraph. Return JSON: {"analysis": "..."}`,
     } catch (err: any) {
       console.warn(`[synth] analysis fallback for ${h.id}: ${err.message?.slice(0, 80)}`);
     }
-  }
+  }));
 
   // Per-hypothesis sections
   for (const h of plan.hypotheses) {

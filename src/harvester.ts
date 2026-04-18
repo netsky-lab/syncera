@@ -128,18 +128,26 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
   if (!existsSync(sourcesDir)) mkdirSync(sourcesDir, { recursive: true });
   if (!existsSync(contentDir)) mkdirSync(contentDir, { recursive: true });
 
+  // Parallelism cap for harvest: 3 simultaneous tasks. Each task runs
+  // deepResearch which internally issues search API calls, Jina fetches,
+  // and one LEARNINGS LLM call per query. The LLM calls bottleneck on
+  // endpoint slots (5 configured); leaving slack for harvest's internal
+  // needs avoids saturating. globalVisited is shared — a race between two
+  // parallel tasks on the same URL results in a harmless double-scrape,
+  // which the post-phase dedup collapses.
+  const HARVEST_CONCURRENCY = 3;
   const allIndices: SourceIndex[] = [];
   const globalVisited = new Set<string>();
 
+  // First pass: load any per-task caches synchronously so globalVisited
+  // is seeded before parallel tasks start (reduces cross-task duplicates).
+  const pendingTasks: typeof plan.tasks = [];
   for (const task of plan.tasks) {
     const taskPath = join(sourcesDir, `${task.id}.json`);
-
-    // Per-task cache: skip if already collected in this run cycle
     if (existsSync(taskPath) && !input.force) {
       const cached = JSON.parse(
-        (await Bun.file(taskPath).text?.() ?? require("fs").readFileSync(taskPath, "utf-8"))
+        require("fs").readFileSync(taskPath, "utf-8")
       ) as SourceIndex;
-      // Only trust cache if it has the new-format learnings field (from deep-research harvester)
       const hasLearnings = Array.isArray((cached as any).learnings);
       if (hasLearnings && cached.results.length > 0) {
         console.log(
@@ -153,7 +161,15 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
         continue;
       }
     }
+    pendingTasks.push(task);
+  }
 
+  console.log(
+    `[harvester] ${allIndices.length} cached, ${pendingTasks.length} to collect (concurrency=${HARVEST_CONCURRENCY})`
+  );
+
+  async function processTask(task: (typeof plan.tasks)[number]): Promise<void> {
+    const taskPath = join(sourcesDir, `${task.id}.json`);
     console.log(`\n[harvester] ─── Task ${task.id} (${task.hypothesis_id}) ───`);
     console.log(`[harvester] Goal: ${task.goal.slice(0, 100)}`);
 
@@ -185,6 +201,27 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
       `[harvester] Task ${task.id} done: ${result.sources.length} sources, ${result.learnings.length} learnings`
     );
   }
+
+  const taskQueue = [...pendingTasks];
+  const workers: Promise<void>[] = [];
+  for (let i = 0; i < HARVEST_CONCURRENCY; i++) {
+    workers.push(
+      (async () => {
+        while (taskQueue.length > 0) {
+          const task = taskQueue.shift();
+          if (!task) return;
+          try {
+            await processTask(task);
+          } catch (err: any) {
+            console.warn(
+              `[harvester] Task ${task.id} failed: ${err.message?.slice(0, 100)}`
+            );
+          }
+        }
+      })()
+    );
+  }
+  await Promise.all(workers);
 
   // Summary index
   const totalSources = allIndices.reduce((n, i) => n + i.results.length, 0);
