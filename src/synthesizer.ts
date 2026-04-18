@@ -153,33 +153,73 @@ Output JSON: {"steps": ["1. ...", "2. ..."]}`,
 
   // --- Call 3: Per-hypothesis narrative analysis (one paragraph each) ---
   const analysisMap = new Map<string, string>();
+  const verifiedById = new Map(verified.map((c) => [c.id, c]));
   for (const h of plan.hypotheses) {
     const a = criticReport.hypothesis_assessments.find(
       (x: any) => x.hypothesis_id === h.id
     );
-    const relevant = verified.filter((c) => c.hypothesis_id === h.id);
+    // Build evidence pool from critic's explicit picks + hypothesis_id-matched
+    // + keyword-matched from the full verified set. This works even after
+    // --replan made claim.hypothesis_id stale relative to current plan.
+    const pool = new Map<string, Claim>();
+    for (const id of a?.supporting_claims ?? []) {
+      const c = verifiedById.get(id);
+      if (c) pool.set(c.id, c);
+    }
+    for (const id of a?.contradicting_claims ?? []) {
+      const c = verifiedById.get(id);
+      if (c) pool.set(c.id, c);
+    }
+    for (const c of verified.filter((c) => c.hypothesis_id === h.id)) {
+      pool.set(c.id, c);
+    }
+    // Keyword-match to pull in thematically-relevant claims from other hypotheses
+    const hypothesisText = (
+      h.statement + " " + h.acceptance_criteria.map((k) => k.name).join(" ")
+    ).toLowerCase();
+    const kwTokens = hypothesisText
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length >= 4);
+    const kwSet = new Set(kwTokens);
+    const scored = verified
+      .filter((c) => !pool.has(c.id))
+      .map((c) => {
+        const t = c.statement.toLowerCase();
+        let score = 0;
+        for (const k of kwSet) if (t.includes(k)) score++;
+        return { c, score };
+      })
+      .filter((x) => x.score >= 2)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12);
+    for (const { c } of scored) pool.set(c.id, c);
+
+    const relevant = Array.from(pool.values());
     const evidencePreview = relevant
-      .slice(0, 20)
+      .slice(0, 25)
       .map((c) => `[${c.id}] (${c.type}, conf ${c.confidence}) ${c.statement}`)
       .join("\n");
     try {
       const { object } = await generateJson({
         schema: z.object({ analysis: z.string() }),
-        system: `You write a 4-7 sentence analytical paragraph synthesizing evidence for ONE research hypothesis. This sits between the bullet-point assessment and the evidence list — it tells the reader the STORY the evidence paints.
+        system: `You write a 5-8 sentence analytical paragraph synthesizing evidence for ONE research hypothesis. This sits between the bullet-point assessment and the evidence list — it tells the reader the STORY the evidence paints.
 
 Required structure (as prose, not bullets):
-  1. The KEY FINDING: what the preponderance of evidence actually shows, with 1-2 [C#] citations and specific numbers.
+  1. The KEY FINDING: what the preponderance of evidence actually shows, with 2-3 [C#] citations and specific numbers.
   2. The NUANCE / TRADE-OFF: which dimension varies across methods or models, citing a comparison ([C#] vs [C#]).
-  3. The CAVEAT: what the evidence does NOT cover for this hypothesis's target configuration (model/hardware/context).
-  4. (optional) WHICH METHOD is currently strongest on this dimension, with a citation.
+  3. The ADJACENT EVIDENCE (not skipped even if target untested): what comparable setups in the evidence tell us — name specific numbers from multiple claims even if the exact combination is missing.
+  4. The CAVEAT: what the evidence does NOT cover for this hypothesis's target configuration (model/hardware/context). ONE sentence, not three — do not repeat it.
+  5. WHICH METHOD is currently strongest on this dimension, with a citation.
 
 Rules:
 - Write as connected prose, not bullets.
-- Every factual claim needs a [C#] citation.
+- MINIMUM 4 distinct [C#] citations per paragraph. Synthesis means USING the evidence pool, not stating "nothing matches exactly" four different ways.
 - Reference EXACT numbers from the evidence (not rounded).
 - Do not restate the hypothesis or the bullet evidence verbatim.
 - Never use: significantly, substantially, effective, impressive, important, promising.
-- If evidence is thin, say so explicitly: "No verified claim directly tests X, though adjacent evidence [C#] suggests Y."
+- If evidence on the exact target is absent, acknowledge it ONCE as part of sentence 4, then pivot back to what IS known from adjacent claims.
+- If the evidence pool has 15+ claims, cite 5-6; if it has 5-8 claims, cite 3-4.
 
 Output JSON: {"analysis": "<paragraph>"}`,
         prompt: `Hypothesis ${h.id}: ${h.statement}
