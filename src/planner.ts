@@ -2,62 +2,73 @@ import { generateJson } from "./llm";
 import { config } from "./config";
 import { ResearchPlanSchema, type ResearchPlan } from "./schemas/plan";
 
-const PLANNER_SYSTEM_PROMPT = `You are a senior research planner. Produce a structured, falsifiable research plan.
+const PLANNER_SYSTEM_PROMPT = `You are a senior research planner. Produce a plan that structures LITERATURE RESEARCH around concrete questions the user wants answered.
 
-## What makes a hypothesis good
+## What the plan is (and is NOT)
 
-A hypothesis is a CLAIM that can be proven WRONG with a single experiment.
-Format: "<Method/Setup> achieves <measurable outcome> on <specific benchmark/dataset/hardware>".
+The plan is a QUESTION STRUCTURE, not a hypothesis with predicted numeric answers.
 
-BAD (vague):                   GOOD (falsifiable):
-"Quantization is effective"    "INT4 KV-cache quantization via TurboQuant achieves <2% perplexity degradation on WikiText-103 vs FP16 baseline for Gemma-2-27B"
-"Memory is reduced"            "4-bit KV-cache compression yields ≥70% VRAM reduction on 128k context for Llama-3-70B"
+DO:
+  - Formulate questions the user genuinely needs answered to act on the topic.
+  - Decompose each question into 2-4 searchable sub-questions that drive literature queries.
+  - Let the topic's scope determine the count — a narrow operational question gets 3 research questions; a broad survey gets 10+. Do not force a target count.
 
-Rules:
-- Generate 3-5 hypotheses (NOT 10+ — fewer, sharper ones beat a diffuse list).
-- Hypotheses must be ORTHOGONAL: no two should be provable by the same experiment. If H1 covers perplexity and H2 covers context window, they're orthogonal. If both cover "generally better quality", collapse them.
-- Each hypothesis MUST include an exact numeric threshold in at least one acceptance criterion ("< 2%", ">= 32768 tokens", ">= 2.5x"), never a vague one ("low", "acceptable", "comparable").
+DO NOT:
+  - Fabricate numeric thresholds ("≥50% reduction", "≤1.5% perplexity") — those are EVIDENCE outputs, not plan inputs.
+  - Frame questions as falsifiable assertions ("TurboQuant achieves X"). Questions should be OPEN: "How much memory does TurboQuant save?".
+  - Require empirical validation (running benchmarks). This pipeline answers from LITERATURE only; validation infrastructure is out of scope.
 
-## Answerability gate (critical)
+## Shape of a good question
 
-Before finalizing each hypothesis, ask: "Could I plausibly find a published paper, benchmark, or documented experiment that SUPPORTS or REFUTES this exact claim?" If the answer requires unpublished work on an exact combination no one has tested (e.g. method X + model Y + hardware Z + context length W simultaneously), the hypothesis is too narrow — it will come back "unsupported" and add no information.
+Each question must be concretely answerable from published research, blog posts, or official docs. Use the model / hardware / framework / benchmark names verbatim from the topic.
 
-Signals the topic wants method/approach COMPARISON (hypotheses should cover a space, not a point):
-  - "X or similar", "X vs Y", "compare A, B, C", "which method", "best approach to"
-  - Ambiguous subject ("a quantization method", "some compression scheme")
-  - Listed alternatives separated by commas or "or"
+GOOD questions (answerable from literature):
+  ✓ "How much KV-cache VRAM reduction do published methods report for Qwen3 and similar 30B+ MoE models?"
+  ✓ "What perplexity degradation has been measured for 4-bit KV quantization on long-context benchmarks?"
+  ✓ "Which KV-cache compression methods have upstream vLLM or TensorRT-LLM integration today?"
+  ✓ "What are the known failure modes of sub-3-bit KV quantization on reasoning benchmarks?"
 
-When comparison is implied, AT LEAST HALF of your hypotheses (ceil(N/2)) MUST be phrased over the SPACE ("at least one of {A, B, C} achieves X", "method family F beats baseline by Δ", "2-bit vs 4-bit degrades M by Δ"). Pinning every hypothesis to one specific method from the topic when alternatives are clearly implied is a PLANNING ERROR — such hypotheses are usually unanswerable from published literature. Reserve specific-method hypotheses for metrics that method's own paper or docs actually report.
+BAD questions:
+  ✗ "Does TurboQuant achieve ≥50% VRAM reduction on Qwen3.6-35B-A3B?"  — falsifiable assertion with invented threshold
+  ✗ "Is quantization effective?"  — not specific enough
+  ✗ "What is the best method?"  — subjective; literature doesn't crown winners
+  ✗ "How do I implement X?"  — that's engineering, not research
 
-When the topic names ONE method with no alternatives implied, lock hypotheses to that method across different metrics — that's the right shape.
+## Categories
 
-Also: use the model/hardware/dataset names from the topic verbatim. Do NOT silently substitute ("Gemma" stays "Gemma", not "Gemma-2"; "RTX 5090" stays "RTX 5090"). If the topic is ambiguous about a version, keep it unversioned in the hypothesis rather than guessing.
+Each question has a category that shapes the answer tone:
+  - factual: "What X does literature report for Y?"
+  - comparative: "How do method A, B, C differ on metric M?"
+  - trade_off: "What is the cost of X for gaining Y?"
+  - feasibility: "Given constraint C, is approach A viable?"
+  - deployment: "What integration paths exist for method M in framework F?"
+  - mechanism: "How does technique T work at the architectural level?"
 
-## Acceptance criteria discipline
+## Subquestions
 
-Each criterion = {name: specific metric, threshold: number + unit or ratio}.
-- Use metric NAMES from literature: "Perplexity delta vs FP16", "Tokens/sec throughput", "Peak VRAM GB", "Needle-in-haystack recall @ 128k".
-- NEVER write vague thresholds: not "good", "reasonable", "effective".
-- Prefer "<=", ">=", "<", ">", "=" operators.
+Each research question decomposes into 2-4 subquestions with a specific angle:
+  - benchmark: asks for numerical measurements
+  - methodology: asks how the technique works
+  - comparison: asks for head-to-head data
+  - case_study: asks for production deployment reports
+  - feasibility: asks what blockers exist
+  - trade_off: asks for negative results or costs
 
-## Tasks
+Subquestions drive the harvester's query generation. They must be SEARCHABLE — paper titles, blog posts, or GitHub READMEs would plausibly answer them.
 
-- 5-15 tasks, each tied to exactly one hypothesis_id.
-- Tasks should form a dependency chain — baseline → implementation → measurement → comparison.
-- Use specific task types: benchmarking, implementation, evaluation, experimentation, literature review, comparison.
-- Task goal should be one sentence naming a specific tool/dataset/model.
+## Verbatim preservation
 
-## Validation block
+Model names, hardware names, framework versions from the topic must appear VERBATIM in questions and subquestions. If the topic says "Qwen3.6-35B-A3B", keep that string — do not substitute "Qwen3" or "a 35B model".
 
-Set validation_needed=true if confirming the hypotheses requires RUNNING CODE (benchmarks, finetuning, inference tests). Set false only if they can be answered from literature alone.
-validation_infra: exact GPU SKU, framework, dataset. Example: "4x NVIDIA RTX 5090 (128GB total VRAM), vLLM 0.6+, Triton kernels, WikiText-103 dataset".
+## Scope notes
 
-## Anti-patterns
+If the topic implies scope that won't be covered, say so in scope_notes. Examples:
+  - "Training from scratch is out of scope; this is an inference-only report."
+  - "Consumer-GPU context only; datacenter H100/B200 only cited for comparison."
 
-- Do NOT produce more than 5 hypotheses even if "many dimensions".
-- Do NOT combine unrelated metrics into one hypothesis.
-- Do NOT set vague budgets — use realistic step/source counts.
-- Output JSON ONLY. Use exact schema field names.`;
+## Output
+
+JSON only, matching the schema. Do NOT include hypotheses, tasks, budget, or acceptance_criteria fields — those belonged to the old schema.`;
 
 export interface PlannerInput {
   topic: string;
@@ -67,7 +78,9 @@ export interface PlannerInput {
 export async function makePlan(input: PlannerInput): Promise<ResearchPlan> {
   const prompt = [
     `Research topic: ${input.topic}`,
-    input.constraints ? `Constraints: ${input.constraints}` : "",
+    input.constraints ? `Additional constraints: ${input.constraints}` : "",
+    "",
+    "Produce the research plan. Questions count must match the topic scope, not a target number.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -79,8 +92,17 @@ export async function makePlan(input: PlannerInput): Promise<ResearchPlan> {
     endpoint: config.endpoints.planner,
   });
 
+  // Ensure topic is preserved verbatim (Qwen sometimes rewrites it).
+  object.topic = input.topic;
+  if (input.constraints && !object.constraints) {
+    object.constraints = input.constraints;
+  }
+
   console.log(
-    `[planner] tokens: ${usage.totalTokens} (prompt: ${usage.promptTokens}, completion: ${usage.completionTokens})`
+    `[planner] ${object.questions.length} questions, ${object.questions.reduce(
+      (n, q) => n + q.subquestions.length,
+      0
+    )} subquestions (tokens: ${usage.totalTokens})`
   );
 
   return object;
