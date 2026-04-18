@@ -174,6 +174,12 @@ Rules:
 - Write for a senior engineer or researcher, not a general audience.
 - Never use: significantly, substantially, effective, impressive, important, promising.
 
+HARDWARE ARITHMETIC (if topic contains GPU/VRAM/context constraints):
+- Make the resource budget explicit in one sentence. Use standard hardware knowledge to compute totals.
+  Example for "4x RTX 5090": "Four RTX 5090 cards provide 128 GB VRAM total (32 GB each)..."
+  Example for "Gemma 2 27B at int4": "...with Gemma-class weights at int4 occupying roughly 14 GB, leaving the KV-cache to absorb the remaining budget."
+- Use known reference values (RTX 5090 = 32GB VRAM, H100 = 80GB, A100 = 40 or 80GB). If you're unsure of a spec, omit the arithmetic rather than guess.
+
 Output JSON: {"introduction": "<paragraph>"}`,
       prompt: `Topic: ${plan.topic}\n\nHypotheses the report will test:\n${plan.hypotheses.map((h) => `${h.id}: ${h.statement}`).join("\n")}\n\nReturn JSON: {"introduction": "..."}`,
       maxRetries: 1,
@@ -453,10 +459,20 @@ Output JSON: {"recommendation": "<paragraph>"}`,
     ""
   );
 
-  // References
+  // References — only include claims that are actually cited in the report
+  // prose. Skips tangential claims that got extracted but no synthesis text
+  // picked them up (a curation fix for the "too many refs" signal).
+  const bodySoFar = lines.join("\n");
+  const citedIds = new Set<string>();
+  const citeRe = /\[C(\d+)\]/g;
+  for (const m of bodySoFar.matchAll(citeRe)) {
+    citedIds.add("C" + m[1]);
+  }
+
   lines.push("## References", "");
   const urlMap = new Map<string, { id: string; title: string }>();
   for (const claim of verified) {
+    if (!citedIds.has(claim.id)) continue;
     for (const ref of claim.references ?? []) {
       if (!urlMap.has(ref.url)) {
         urlMap.set(ref.url, { id: claim.id, title: ref.title });
@@ -466,6 +482,9 @@ Output JSON: {"recommendation": "<paragraph>"}`,
   for (const [url, info] of urlMap) {
     lines.push(`- [${info.id}] [${info.title}](${url})`);
   }
+  console.log(
+    `[synth] References: ${urlMap.size} cited URLs from ${citedIds.size} cited claims (of ${verified.length} verified)`
+  );
 
   const report = lines.join("\n");
   const reportPath = join(projectDir, "REPORT.md");
