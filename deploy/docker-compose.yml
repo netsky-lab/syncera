@@ -17,7 +17,10 @@ services:
     container_name: research-lab-web
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      # Publish on all interfaces so the site is reachable from the internet.
+      # Basic Auth + HTTPS (via reverse proxy) is recommended for production;
+      # without TLS the password travels in clear text — see deploy/README.md.
+      - "3000:3000"
     environment:
       BASIC_AUTH_USER: ${BASIC_AUTH_USER:-research}
       BASIC_AUTH_PASS: ${BASIC_AUTH_PASS:?BASIC_AUTH_PASS must be set in .env}
