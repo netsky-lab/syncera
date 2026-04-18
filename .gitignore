@@ -35,4 +35,4 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Private project docs (internal vision, NOT shipped to OSS)
 .private/
-projects/
+/projects/
