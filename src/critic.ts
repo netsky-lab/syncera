@@ -150,11 +150,52 @@ Evaluate the evidence against each hypothesis. Be critical. Use only verified cl
     endpoint: config.endpoints.critic,
   });
 
+  // Enforce contradiction floor: critic prompt requires 3+ contradictions at
+  // 100+ verified claims, but Qwen routinely emits 2 and stops. If we're
+  // under floor, make a targeted second call asking for ADDITIONAL
+  // contradictions and merge them into the report.
+  const contradictionFloor = verified.length >= 150 ? 3 : verified.length >= 30 ? 2 : 0;
+  if (
+    contradictionFloor > 0 &&
+    (object.contradictions?.length ?? 0) < contradictionFloor
+  ) {
+    const current = object.contradictions ?? [];
+    const needed = contradictionFloor - current.length;
+    console.log(
+      `[critic] Contradiction floor ${contradictionFloor}, found ${current.length} — requesting ${needed} more`
+    );
+    try {
+      const existing =
+        current.length > 0
+          ? `Already-identified contradictions (DO NOT repeat these pairs):\n${current
+              .map((c: any) => `  [${c.claim_a}] vs [${c.claim_b}]: ${c.description}`)
+              .join("\n")}\n\n`
+          : "";
+      const { object: extra } = await generateJson({
+        schema: (await import("./schemas/claim")).CriticReportSchema.pick({
+          contradictions: true,
+        }),
+        system: `You are the same adversarial research critic. The previous pass emitted too few contradictions. Find ${needed} ADDITIONAL contradictions from the verified claims — pairs that genuinely disagree, using the types: same-metric disagreement, mechanism disagreement, scaling-claim divergence. Each contradiction MUST cite real claim IDs from the list. Do not repeat already-identified pairs.`,
+        prompt: `Verified claims (${verified.length}):\n${claimsSummary}\n\n${existing}Return JSON: {"contradictions": [{"claim_a":"C#","claim_b":"C#","description":"..."}]}`,
+        temperature: 0.3,
+        maxRetries: 1,
+        endpoint: config.endpoints.critic,
+      });
+      const moreFound = (extra.contradictions ?? []).slice(0, needed);
+      if (moreFound.length > 0) {
+        object.contradictions = [...current, ...moreFound];
+        console.log(`[critic] Added ${moreFound.length} contradictions from second pass`);
+      }
+    } catch (err: any) {
+      console.warn(`[critic] Second-pass contradiction fetch failed: ${err.message?.slice(0, 80)}`);
+    }
+  }
+
   const reportPath = join(projectDir, "critic_report.json");
   writeFileSync(reportPath, JSON.stringify(object, null, 2));
   console.log(`[critic] Written: ${reportPath}`);
   console.log(
-    `[critic] Overall confidence: ${(object.overall_confidence * 100).toFixed(0)}%`
+    `[critic] Overall confidence: ${(object.overall_confidence * 100).toFixed(0)}% — ${(object.contradictions ?? []).length} contradictions`
   );
 
   return object;
