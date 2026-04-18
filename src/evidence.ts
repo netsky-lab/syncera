@@ -139,9 +139,9 @@ export async function extractEvidence(
 ): Promise<Fact[]> {
   const sourcesDir = join(projectDir, "sources");
   const contentDir = join(sourcesDir, "content");
-  // Subquestion cache files follow pattern Q<n>.<m>.json
+  // Subquestion cache files follow pattern Q<n>-S<m>.json or Q<n>.<m>.json
   const sourceFiles = readdirSync(sourcesDir).filter(
-    (f) => /^Q\d+(\.\d+)?\.json$/.test(f)
+    (f) => /^Q\d+([-.]S?\d+)?\.json$/.test(f)
   );
 
   // Run subquestions in parallel with bounded concurrency.
