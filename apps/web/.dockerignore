@@ -1,0 +1,10 @@
+node_modules
+.next
+.next/dev
+.next/cache
+screenshots
+test-results
+tests
+playwright.config.ts
+*.log
+.env*

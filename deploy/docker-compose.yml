@@ -1,0 +1,35 @@
+# Research Lab — web UI deploy compose.
+#
+# Usage on the server:
+#   1. Copy this file + the build context to the server (see deploy/README.md).
+#   2. Set BASIC_AUTH_PASS in .env next to this file.
+#   3. rsync the projects/ directory to the server (persistent volume).
+#   4. docker compose up -d --build
+#
+# The container serves on port 3000; put a reverse proxy (caddy/nginx/traefik)
+# in front for TLS.
+
+services:
+  web:
+    build:
+      context: ../
+      dockerfile: apps/web/Dockerfile
+    container_name: research-lab-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER:-research}
+      BASIC_AUTH_PASS: ${BASIC_AUTH_PASS:?BASIC_AUTH_PASS must be set in .env}
+      NODE_ENV: production
+    volumes:
+      # Read-only mount of the research artifacts. Generate locally via
+      # `bun run src/run.ts ...` then rsync ./projects/ to the server.
+      - ../projects:/app/projects:ro
+    # Optional healthcheck — hits the app's root over localhost
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
