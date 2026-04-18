@@ -34,9 +34,15 @@ COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder /app/apps/web/public ./apps/web/public
 
-# Playwright needs chromium for PDF export. Install minimal chromium.
-RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont \
+# Chromium for PDF export + docker CLI so the web container can spawn
+# sibling pipeline containers via the host docker socket.
+RUN apk add --no-cache \
+      chromium nss freetype harfbuzz ca-certificates ttf-freefont \
+      docker-cli rsync \
     && addgroup -g 1001 -S app && adduser -u 1001 -S app -G app \
+    # Docker socket is typically owned by root:docker on the host with 660.
+    # Add app to the docker group so it can invoke the daemon.
+    && addgroup -S docker && adduser app docker \
     && chown -R app:app /app
 
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1

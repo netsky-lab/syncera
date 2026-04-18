@@ -10,6 +10,24 @@
 # in front for TLS.
 
 services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: research-lab-searxng
+    restart: unless-stopped
+    expose:
+      - "8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      SEARXNG_BASE_URL: http://localhost:8080/
+      INSTANCE_NAME: research-lab
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
   web:
     build:
       context: ../
@@ -25,11 +43,34 @@ services:
       BASIC_AUTH_USER: ${BASIC_AUTH_USER:-research}
       BASIC_AUTH_PASS: ${BASIC_AUTH_PASS:?BASIC_AUTH_PASS must be set in .env}
       NODE_ENV: production
+      # LLM endpoint + search used when the web UI spawns a pipeline run.
+      # Override via deploy/.env.
+      SEARXNG_URL: ${SEARXNG_URL:-http://research-lab-searxng:8080}
+      GEMMA_BASE_URL: ${GEMMA_BASE_URL:?GEMMA_BASE_URL must be set in .env (LLM endpoint)}
+      GEMMA_MODEL: ${GEMMA_MODEL:-qwen3.6-35b-a3b}
+      GEMMA_API_KEY: ${GEMMA_API_KEY:-dummy}
+      # The web container spawns sibling pipeline containers via the host
+      # docker daemon. They need to know the host-side path to bind-mount
+      # and the compose network to attach to.
+      PIPELINE_HOST_REPO_ROOT: ${PIPELINE_HOST_REPO_ROOT:-/opt/research-lab}
+      PIPELINE_NETWORK: ${PIPELINE_NETWORK:-deploy_default}
     volumes:
-      # Read-only mount of the research artifacts. Generate locally via
-      # `bun run src/run.ts ...` then rsync ./projects/ to the server.
-      - ../projects:/app/projects:ro
-    # Optional healthcheck — hits the app's root over localhost
+      # Writable mount — the pipeline (spawned from the web container)
+      # writes new project artifacts here. Web UI serves them fresh.
+      - ../projects:/app/projects:rw
+      # Docker-out-of-docker: let the web container talk to the host
+      # daemon so it can run pipeline containers on the same compose
+      # network as searxng.
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Add the host-side docker group GID to this container's supplementary
+    # groups so the `app` user can read /var/run/docker.sock. Override via
+    # DOCKER_GID in deploy/.env if the host uses a different GID — on this
+    # server it's 988. Check with `stat -c %g /var/run/docker.sock`.
+    group_add:
+      - "${DOCKER_GID:-988}"
+    depends_on:
+      searxng:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
       interval: 30s

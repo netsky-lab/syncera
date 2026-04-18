@@ -1,0 +1,61 @@
+# SearXNG config for the Research Lab pipeline.
+# Derived from official defaults with JSON output enabled and a generated
+# secret key (replace the placeholder on first deploy).
+
+use_default_settings: true
+
+general:
+  instance_name: "research-lab-searxng"
+  # Flip to true if you want privacy links in the web UI (we don't expose it)
+  privacypolicy_url: false
+  donation_url: false
+  contact_url: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  # Whitelist the formats our pipeline uses.
+  formats:
+    - html
+    - json
+
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  # IMPORTANT: rotate this on first deploy.
+  secret_key: "please-rotate-me-in-deploy-searxng-settings-yml"
+  base_url: false
+  image_proxy: false
+  default_http_headers:
+    X-Content-Type-Options: nosniff
+    X-Download-Options: noopen
+    X-Robots-Tag: noindex, nofollow
+    Referrer-Policy: no-referrer
+
+ui:
+  static_use_hash: true
+
+# No rate limit inside the internal network.
+redis:
+  url: false
+
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 12.0
+  pool_connections: 100
+  pool_maxsize: 20
+
+engines:
+  - name: google
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: startpage
+    disabled: false
+  - name: bing
+    disabled: true
+  - name: arxiv
+    disabled: false
+  - name: wikipedia
+    disabled: false
