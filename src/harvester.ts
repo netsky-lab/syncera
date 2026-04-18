@@ -89,6 +89,21 @@ Examples of BAD learnings (REJECT, skip):
 - NEGATIVE findings matter: if a source reports a failure or limitation ("FP8 lacks fused ops", "2-bit fails for reasoning"), extract it — these are high-value contradictions later.
 - Preserve exact method/metric names as written in source ("NVFP4", not "4-bit FP"; "LongBench", not "long bench").
 
+## COMPARATIVE-METHOD COVERAGE (critical for research breadth)
+
+Research papers typically compare a hero method against 3-8 baselines in tables. Extract a DISTINCT learning for EACH non-hero method the paper reports a number for — even if that method is "background". Readers need the whole landscape.
+
+GOOD (one per baseline):
+  ✓ "TurboQuant achieves 6x KV reduction on Gemma [paper X]"
+  ✓ "Kitty reports 3.1pp GSM8K drop at 2-bit on Qwen3 [paper X Table 2]"
+  ✓ "MiniKV achieves 80%+ compression on Llama-3 [paper X Table 2]"
+  ✓ "Coupled Quantization enables 1-bit KV cache at <1% perplexity loss [paper X Table 2]"
+
+BAD (collapses the table into one hero-method learning):
+  ✗ "TurboQuant outperforms baselines KIVI, Kitty, MiniKV" — names dropped, no numbers
+
+Also extract BACKGROUND mentions even without numbers: if a paper names a framework (TensorRT-LLM, llama.cpp), format (Q4_K_M, Q4_0, GGUF), or well-known method (PagedAttention, FlashAttention) in its related-work or setup, include at least one learning naming that entity. These are research-landscape anchors.
+
 ## Follow-up questions
 
 Generate 3 follow-up questions that dig DEEPER, not broader:
