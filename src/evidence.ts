@@ -134,24 +134,29 @@ export async function extractEvidence(
     (f) => f.startsWith("T") && f.endsWith(".json")
   );
 
+  // Run tasks in parallel with bounded concurrency. Qwen Runpod endpoint
+  // has 5 slots; verify uses some, so cap evidence at 3 concurrent tasks.
+  // Sequential claim IDs are assigned AFTER all tasks finish to avoid
+  // interleaving across parallel tasks.
+  const EVIDENCE_CONCURRENCY = 3;
   const allClaims: Claim[] = [];
-  let claimCounter = 0;
+  const taskResults: Array<{ taskId: string; claims: Claim[] }> = [];
 
-  for (const file of sourceFiles) {
+  async function processTask(file: string): Promise<void> {
     const sourceIndex: SourceIndex = JSON.parse(
       readFileSync(join(sourcesDir, file), "utf-8")
     );
-    if (sourceIndex.results.length === 0) continue;
+    if (sourceIndex.results.length === 0) return;
 
     const hypothesis = plan.hypotheses.find(
       (h) => h.id === sourceIndex.hypothesis_id
     );
-    if (!hypothesis) continue;
+    if (!hypothesis) return;
 
     const learnings: string[] = (sourceIndex as any).learnings ?? [];
     if (learnings.length === 0) {
       console.log(`[evidence] ${sourceIndex.task_id}: skipped (no learnings)`);
-      continue;
+      return;
     }
 
     // H5: extract named-entity pool BEFORE evidence extraction.
@@ -208,7 +213,7 @@ For each learning, produce a claim:
 - confidence: 0.0-1.0
 - references: array with {url, title, exact_quote=the learning text verbatim}; pick the most plausible source URL from the catalog
 
-Start claim IDs from C${claimCounter + 1}. Output JSON only.`;
+Output JSON only (claim IDs will be assigned after all tasks finish).`;
 
     console.log(
       `[evidence] ${sourceIndex.task_id}: ${learnings.length} learnings, ${sourceIndex.results.length} sources (${Object.entries(tierCounts).map(([t, n]) => `${t}:${n}`).join(" ")}) → ${hypothesis.id}`
@@ -225,9 +230,9 @@ Start claim IDs from C${claimCounter + 1}. Output JSON only.`;
 
       // Post-process: ensure each claim's reference URL is in the actual sources catalog,
       // and attach the best matching source via our substring heuristic if LLM picked wrong.
+      const taskClaims: Claim[] = [];
       for (const claim of object.claims) {
-        claimCounter++;
-        claim.id = `C${claimCounter}`;
+        // ID assigned after all parallel tasks finish (see post-processing below)
         claim.hypothesis_id = hypothesis.id;
 
         // Validate + fix references
@@ -279,16 +284,45 @@ Start claim IDs from C${claimCounter + 1}. Output JSON only.`;
         }
         claim.references = validRefs;
 
-        allClaims.push(claim);
+        taskClaims.push(claim);
       }
 
+      taskResults.push({ taskId: sourceIndex.task_id, claims: taskClaims });
       console.log(
-        `[evidence]   ${sourceIndex.task_id}: +${object.claims.length} claims`
+        `[evidence]   ${sourceIndex.task_id}: +${taskClaims.length} claims`
       );
     } catch (err: any) {
       console.warn(
         `[evidence]   ${sourceIndex.task_id} failed: ${err.message?.slice(0, 100)}`
       );
+    }
+  }
+
+  // Run tasks in parallel with bounded concurrency
+  const taskQueue = [...sourceFiles];
+  const workers: Promise<void>[] = [];
+  for (let i = 0; i < EVIDENCE_CONCURRENCY; i++) {
+    workers.push(
+      (async () => {
+        while (taskQueue.length > 0) {
+          const file = taskQueue.shift();
+          if (!file) return;
+          await processTask(file);
+        }
+      })()
+    );
+  }
+  await Promise.all(workers);
+
+  // Assign sequential claim IDs in stable task order (by task_id ascending)
+  // so downstream references stay deterministic across re-runs.
+  taskResults.sort((a, b) => a.taskId.localeCompare(b.taskId));
+  let counter = 0;
+  for (const tr of taskResults) {
+    for (const claim of tr.claims) {
+      counter++;
+      claim.id = `C${counter}`;
+      allClaims.push(claim);
     }
   }
 
