@@ -191,11 +191,21 @@ export default async function ProjectPage({
       <Tabs defaultValue="report" className="w-full">
         <TabsList className="grid grid-cols-6 w-full">
           <TabsTrigger value="report">Report</TabsTrigger>
-          <TabsTrigger value="hypotheses">Hypotheses</TabsTrigger>
-          <TabsTrigger value="claims">Claims</TabsTrigger>
+          {isQuestionFirst ? (
+            <>
+              <TabsTrigger value="questions">Questions</TabsTrigger>
+              <TabsTrigger value="facts">Facts</TabsTrigger>
+              <TabsTrigger value="analysis">Analysis</TabsTrigger>
+            </>
+          ) : (
+            <>
+              <TabsTrigger value="hypotheses">Hypotheses</TabsTrigger>
+              <TabsTrigger value="claims">Claims</TabsTrigger>
+              <TabsTrigger value="critic">Critic</TabsTrigger>
+            </>
+          )}
           <TabsTrigger value="sources">Sources</TabsTrigger>
           <TabsTrigger value="plan">Plan</TabsTrigger>
-          <TabsTrigger value="critic">Critic</TabsTrigger>
         </TabsList>
 
         {/* Report */}
@@ -210,6 +220,273 @@ export default async function ProjectPage({
             <Card className="border-dashed">
               <CardContent className="py-16 text-center text-muted-foreground text-sm">
                 No report generated yet. Run the synth phase.
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Questions (question-first) */}
+        <TabsContent value="questions" className="mt-5 space-y-3">
+          {questions.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-12 text-center text-muted-foreground text-sm">
+                No research questions — this project uses the legacy hypothesis-first schema.
+              </CardContent>
+            </Card>
+          ) : (
+            questions.map((q: any) => {
+              const answer = analysisReport?.answers?.find(
+                (a: any) => a.question_id === q.id
+              );
+              const coverage = answer?.coverage ?? "pending";
+              const coverageTone =
+                coverage === "complete"
+                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                  : coverage === "partial"
+                    ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                    : coverage === "gaps_critical"
+                      ? "bg-orange-500/15 text-orange-300 border-orange-500/30"
+                      : "bg-red-500/15 text-red-300 border-red-500/30";
+              return (
+                <Card key={q.id}>
+                  <CardContent className="py-4 px-5 space-y-3">
+                    <div className="flex items-start gap-2 flex-wrap">
+                      <span className="font-mono text-xs font-semibold text-muted-foreground">
+                        {q.id}
+                      </span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {q.category}
+                      </Badge>
+                      <Badge variant="outline" className={`text-[10px] ${coverageTone}`}>
+                        {coverage.replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                    <div className="text-sm font-medium leading-snug">{q.question}</div>
+                    {q.subquestions?.length > 0 && (
+                      <div className="space-y-1 pt-1">
+                        {q.subquestions.map((sq: any) => (
+                          <div
+                            key={sq.id}
+                            className="flex items-start gap-2 text-xs py-1"
+                          >
+                            <span className="font-mono text-muted-foreground shrink-0">
+                              {sq.id}
+                            </span>
+                            <Badge variant="secondary" className="text-[10px] shrink-0 font-mono">
+                              {sq.angle}
+                            </Badge>
+                            <div className="flex-1 text-muted-foreground">{sq.text}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {answer?.answer && (
+                      <div className="text-sm leading-relaxed pt-2 border-t border-border/50 whitespace-pre-wrap">
+                        {answer.answer}
+                      </div>
+                    )}
+                    {answer?.gaps?.length > 0 && (
+                      <div className="text-xs space-y-1 pt-2 border-t border-border/50">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                          Gaps
+                        </div>
+                        {answer.gaps.map((g: string, i: number) => (
+                          <div key={i} className="text-muted-foreground">
+                            · {g}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {answer?.follow_ups?.length > 0 && (
+                      <div className="text-xs space-y-1 pt-1">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                          Follow-ups
+                        </div>
+                        {answer.follow_ups.map((f: string, i: number) => (
+                          <div key={i} className="text-muted-foreground">
+                            → {f}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </TabsContent>
+
+        {/* Facts (question-first) */}
+        <TabsContent value="facts" className="mt-5 space-y-2">
+          {facts.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-12 text-center text-muted-foreground text-sm">
+                No facts extracted.
+              </CardContent>
+            </Card>
+          ) : (
+            facts.map((f: any) => {
+              const ver = verMap.get(f.id);
+              const isRejected = ver && ver.verdict !== "verified";
+              const factualityTone =
+                f.factuality === "quantitative"
+                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                  : f.factuality === "comparative"
+                    ? "bg-blue-500/15 text-blue-300 border-blue-500/30"
+                    : f.factuality === "background"
+                      ? "bg-zinc-500/15 text-zinc-300 border-zinc-500/30"
+                      : "bg-amber-500/15 text-amber-300 border-amber-500/30";
+              return (
+                <Card
+                  key={f.id}
+                  className={isRejected ? "opacity-60 border-dashed" : ""}
+                >
+                  <CardContent className="py-3 px-4 space-y-2">
+                    <div className="flex items-start gap-3">
+                      <span className="font-mono text-xs font-semibold text-muted-foreground shrink-0 mt-0.5">
+                        {f.id}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div
+                          className={`text-[13px] leading-relaxed ${isRejected ? "line-through decoration-zinc-500/60" : ""}`}
+                        >
+                          {f.statement}
+                        </div>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        {ver && (
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] ${verdictTone(ver.verdict)}`}
+                          >
+                            {verdictIcon(ver.verdict)} {ver.verdict.replace(/_/g, " ")}
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className={`text-[10px] ${factualityTone}`}>
+                          {f.factuality}
+                        </Badge>
+                        {f.question_id && (
+                          <Badge variant="outline" className="text-[10px] font-mono">
+                            {f.question_id}
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="text-[10px] font-mono tabular-nums">
+                          {(f.confidence * 100).toFixed(0)}%
+                        </Badge>
+                      </div>
+                    </div>
+                    {ver && ver.verdict !== "verified" && (
+                      <div className="pl-9 text-xs text-amber-300/80 italic">
+                        <span className="text-muted-foreground font-mono not-italic">
+                          verifier:
+                        </span>{" "}
+                        {ver.notes}
+                      </div>
+                    )}
+                    {f.references?.length > 0 && (
+                      <div className="pl-9 space-y-1.5">
+                        {f.references.map((r: any, i: number) => (
+                          <div key={i} className="text-xs text-muted-foreground">
+                            <a
+                              href={r.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary/80 hover:text-primary underline decoration-dotted"
+                            >
+                              {r.title || r.url}
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </TabsContent>
+
+        {/* Analysis (question-first) */}
+        <TabsContent value="analysis" className="mt-5 space-y-3">
+          {analysisReport ? (
+            <>
+              <Card>
+                <CardContent className="py-4 px-5 space-y-3">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                    Overall summary
+                  </div>
+                  <div className="text-sm leading-relaxed">
+                    {analysisReport.overall_summary}
+                  </div>
+                </CardContent>
+              </Card>
+              {analysisReport.cross_question_tensions?.length > 0 && (
+                <Card>
+                  <CardContent className="py-4 px-5 space-y-2">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                      Cross-question tensions · {analysisReport.cross_question_tensions.length}
+                    </div>
+                    {analysisReport.cross_question_tensions.map(
+                      (t: any, i: number) => (
+                        <div
+                          key={i}
+                          className="text-xs p-3 rounded-md bg-amber-500/5 border border-amber-500/20 space-y-1"
+                        >
+                          <div className="flex gap-2 flex-wrap">
+                            {t.involved_questions?.map((qid: string) => (
+                              <Badge
+                                key={qid}
+                                variant="outline"
+                                className="text-[10px] font-mono"
+                              >
+                                {qid}
+                              </Badge>
+                            ))}
+                            {t.involved_facts?.map((fid: string) => (
+                              <Badge
+                                key={fid}
+                                variant="secondary"
+                                className="text-[10px] font-mono"
+                              >
+                                {fid}
+                              </Badge>
+                            ))}
+                          </div>
+                          <div>{t.description}</div>
+                        </div>
+                      )
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+              {analysisReport.answers?.map((a: any) => (
+                <Card key={a.question_id}>
+                  <CardContent className="py-3 px-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px] font-mono">
+                        {a.question_id}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px]">
+                        {a.coverage?.replace(/_/g, " ")}
+                      </Badge>
+                      {a.conflicting_facts?.length > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] bg-red-500/15 text-red-300 border-red-500/30"
+                        >
+                          {a.conflicting_facts.length} conflict{a.conflicting_facts.length === 1 ? "" : "s"}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-[13px] leading-relaxed">{a.answer}</div>
+                  </CardContent>
+                </Card>
+              ))}
+            </>
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="py-16 text-center text-muted-foreground text-sm">
+                No analysis report yet.
               </CardContent>
             </Card>
           )}
@@ -379,28 +656,84 @@ export default async function ProjectPage({
 
         {/* Plan */}
         <TabsContent value="plan" className="mt-5 space-y-4">
-          <Card>
-            <CardContent className="py-4 px-5 space-y-3">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-                Tasks · {tasks.length}
-              </div>
-              <div className="space-y-2">
-                {tasks.map((t: any) => (
-                  <div key={t.id} className="flex items-start gap-3 text-xs py-1.5 border-b border-border/50 last:border-0">
-                    <span className="font-mono text-muted-foreground shrink-0 w-6">{t.id}</span>
-                    <Badge variant="outline" className="text-[10px] shrink-0 font-mono">{t.type}</Badge>
-                    <Badge variant="secondary" className="text-[10px] shrink-0 font-mono">{t.hypothesis_id}</Badge>
-                    <div className="flex-1">{t.goal}</div>
-                    {t.depends_on?.length > 0 && (
-                      <div className="text-[10px] text-muted-foreground font-mono shrink-0">
-                        ← {t.depends_on.join(",")}
+          {isQuestionFirst ? (
+            <Card>
+              <CardContent className="py-4 px-5 space-y-3">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                  Questions · {questions.length} ·{" "}
+                  {questions.reduce(
+                    (n: number, q: any) => n + (q.subquestions?.length ?? 0),
+                    0
+                  )}{" "}
+                  subquestions
+                </div>
+                <div className="space-y-3">
+                  {questions.map((q: any) => (
+                    <div
+                      key={q.id}
+                      className="py-2 border-b border-border/50 last:border-0"
+                    >
+                      <div className="flex items-start gap-2 mb-1.5 text-xs">
+                        <span className="font-mono text-muted-foreground shrink-0">
+                          {q.id}
+                        </span>
+                        <Badge variant="outline" className="text-[10px] shrink-0">
+                          {q.category}
+                        </Badge>
+                        <div className="flex-1 text-sm">{q.question}</div>
                       </div>
-                    )}
+                      {q.subquestions?.map((sq: any) => (
+                        <div
+                          key={sq.id}
+                          className="flex items-start gap-2 text-xs pl-6 py-0.5 text-muted-foreground"
+                        >
+                          <span className="font-mono shrink-0">{sq.id}</span>
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] shrink-0 font-mono"
+                          >
+                            {sq.angle}
+                          </Badge>
+                          <div className="flex-1">{sq.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                {plan.scope_notes && (
+                  <div className="pt-3 mt-2 border-t border-border/50 text-xs text-muted-foreground">
+                    <div className="text-[10px] uppercase tracking-wide font-semibold mb-1">
+                      Scope notes
+                    </div>
+                    {plan.scope_notes}
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="py-4 px-5 space-y-3">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                  Tasks · {tasks.length}
+                </div>
+                <div className="space-y-2">
+                  {tasks.map((t: any) => (
+                    <div key={t.id} className="flex items-start gap-3 text-xs py-1.5 border-b border-border/50 last:border-0">
+                      <span className="font-mono text-muted-foreground shrink-0 w-6">{t.id}</span>
+                      <Badge variant="outline" className="text-[10px] shrink-0 font-mono">{t.type}</Badge>
+                      <Badge variant="secondary" className="text-[10px] shrink-0 font-mono">{t.hypothesis_id}</Badge>
+                      <div className="flex-1">{t.goal}</div>
+                      {t.depends_on?.length > 0 && (
+                        <div className="text-[10px] text-muted-foreground font-mono shrink-0">
+                          ← {t.depends_on.join(",")}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardContent className="py-4 px-5 space-y-2 text-xs">
               <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
