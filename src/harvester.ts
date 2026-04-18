@@ -5,7 +5,7 @@ import { readUrls } from "./reader";
 import { SerpQueriesSchema, LearningsSchema } from "./schemas/learning";
 import { scoreSource } from "./sourcing";
 import type { SearchResult, SourceIndex } from "./schemas/source";
-import type { ResearchPlan, Task } from "./schemas/plan";
+import type { ResearchPlan, ResearchQuestion, Subquestion } from "./schemas/plan";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 
@@ -128,30 +128,40 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
   if (!existsSync(sourcesDir)) mkdirSync(sourcesDir, { recursive: true });
   if (!existsSync(contentDir)) mkdirSync(contentDir, { recursive: true });
 
-  // Parallelism cap for harvest: 3 simultaneous tasks. Each task runs
-  // deepResearch which internally issues search API calls, Jina fetches,
-  // and one LEARNINGS LLM call per query. The LLM calls bottleneck on
-  // endpoint slots (5 configured); leaving slack for harvest's internal
-  // needs avoids saturating. globalVisited is shared — a race between two
-  // parallel tasks on the same URL results in a harmless double-scrape,
-  // which the post-phase dedup collapses.
+  // Parallelism cap for harvest: 3 simultaneous subquestions. Each runs
+  // deepResearch (search API + Jina fetches + LEARNINGS LLM call per query).
+  // Endpoint has 5 slots; 3 concurrent keeps slack for other pipeline phases.
   const HARVEST_CONCURRENCY = 3;
+
+  // Flatten plan into (question, subquestion) units. Each unit gets one
+  // SourceIndex. Per-subquestion cache file: sources/{subquestion.id}.json.
+  interface HarvestUnit {
+    question: ResearchQuestion;
+    subquestion: Subquestion;
+  }
+  const allUnits: HarvestUnit[] = [];
+  for (const q of plan.questions) {
+    for (const sq of q.subquestions) {
+      allUnits.push({ question: q, subquestion: sq });
+    }
+  }
+
   const allIndices: SourceIndex[] = [];
   const globalVisited = new Set<string>();
+  const pendingUnits: HarvestUnit[] = [];
 
-  // First pass: load any per-task caches synchronously so globalVisited
-  // is seeded before parallel tasks start (reduces cross-task duplicates).
-  const pendingTasks: typeof plan.tasks = [];
-  for (const task of plan.tasks) {
-    const taskPath = join(sourcesDir, `${task.id}.json`);
-    if (existsSync(taskPath) && !input.force) {
+  // First pass: load any per-subquestion caches synchronously so
+  // globalVisited is seeded before parallel units start.
+  for (const unit of allUnits) {
+    const cachePath = join(sourcesDir, `${unit.subquestion.id}.json`);
+    if (existsSync(cachePath) && !input.force) {
       const cached = JSON.parse(
-        require("fs").readFileSync(taskPath, "utf-8")
+        require("fs").readFileSync(cachePath, "utf-8")
       ) as SourceIndex;
       const hasLearnings = Array.isArray((cached as any).learnings);
       if (hasLearnings && cached.results.length > 0) {
         console.log(
-          `[harvester] ─── Task ${task.id} cached (${cached.results.length} sources, ${(cached as any).learnings?.length ?? 0} learnings) ───`
+          `[harvester] ─── ${unit.subquestion.id} cached (${cached.results.length} sources, ${(cached as any).learnings?.length ?? 0} learnings) ───`
         );
         for (const r of cached.results) {
           const key = normalizeUrl(r.url);
@@ -161,21 +171,26 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
         continue;
       }
     }
-    pendingTasks.push(task);
+    pendingUnits.push(unit);
   }
 
   console.log(
-    `[harvester] ${allIndices.length} cached, ${pendingTasks.length} to collect (concurrency=${HARVEST_CONCURRENCY})`
+    `[harvester] ${allIndices.length} cached, ${pendingUnits.length} to collect (concurrency=${HARVEST_CONCURRENCY})`
   );
 
-  async function processTask(task: (typeof plan.tasks)[number]): Promise<void> {
-    const taskPath = join(sourcesDir, `${task.id}.json`);
-    console.log(`\n[harvester] ─── Task ${task.id} (${task.hypothesis_id}) ───`);
-    console.log(`[harvester] Goal: ${task.goal.slice(0, 100)}`);
+  async function processUnit(unit: HarvestUnit): Promise<void> {
+    const cachePath = join(sourcesDir, `${unit.subquestion.id}.json`);
+    const header = `${unit.subquestion.id} [${unit.subquestion.angle}]`;
+    console.log(`\n[harvester] ─── ${header} (question ${unit.question.id}) ───`);
+    console.log(`[harvester] Subquestion: ${unit.subquestion.text.slice(0, 120)}`);
+
+    // The harvester-facing "goal" is the subquestion text plus its parent
+    // question — the LLM-query generator uses both to produce targeted queries.
+    const goal = `Research question: ${unit.question.question}\nSubquestion (${unit.subquestion.angle}): ${unit.subquestion.text}`;
 
     const result = await deepResearch({
       topic: plan.topic,
-      taskGoal: task.goal,
+      taskGoal: goal,
       breadth,
       depth,
       pagesPerQuery,
@@ -187,8 +202,8 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
     });
 
     const index: SourceIndex = {
-      task_id: task.id,
-      hypothesis_id: task.hypothesis_id,
+      question_id: unit.question.id,
+      subquestion_id: unit.subquestion.id,
       queries: Array.from(new Set(result.sources.map((s) => s.query))),
       results: result.sources,
       collected_at: new Date().toISOString(),
@@ -196,25 +211,25 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
     (index as any).learnings = result.learnings;
 
     allIndices.push(index);
-    writeFileSync(taskPath, JSON.stringify(index, null, 2));
+    writeFileSync(cachePath, JSON.stringify(index, null, 2));
     console.log(
-      `[harvester] Task ${task.id} done: ${result.sources.length} sources, ${result.learnings.length} learnings`
+      `[harvester] ${header} done: ${result.sources.length} sources, ${result.learnings.length} learnings`
     );
   }
 
-  const taskQueue = [...pendingTasks];
+  const unitQueue = [...pendingUnits];
   const workers: Promise<void>[] = [];
   for (let i = 0; i < HARVEST_CONCURRENCY; i++) {
     workers.push(
       (async () => {
-        while (taskQueue.length > 0) {
-          const task = taskQueue.shift();
-          if (!task) return;
+        while (unitQueue.length > 0) {
+          const unit = unitQueue.shift();
+          if (!unit) return;
           try {
-            await processTask(task);
+            await processUnit(unit);
           } catch (err: any) {
             console.warn(
-              `[harvester] Task ${task.id} failed: ${err.message?.slice(0, 100)}`
+              `[harvester] ${unit.subquestion.id} failed: ${err.message?.slice(0, 100)}`
             );
           }
         }
@@ -245,8 +260,9 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
         total_sources: totalSources,
         total_learnings: totalLearnings,
         by_provider: providerCounts,
-        by_task: allIndices.map((i) => ({
-          task_id: i.task_id,
+        by_subquestion: allIndices.map((i) => ({
+          question_id: i.question_id,
+          subquestion_id: i.subquestion_id,
           sources: i.results.length,
           learnings: (i as any).learnings?.length ?? 0,
         })),

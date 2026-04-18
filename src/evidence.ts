@@ -1,6 +1,6 @@
 import { generateJson } from "./llm";
 import { config } from "./config";
-import { ClaimExtractionSchema, type Claim } from "./schemas/claim";
+import { FactExtractionSchema, type Fact } from "./schemas/fact";
 import type { ResearchPlan } from "./schemas/plan";
 import type { SourceIndex, SearchResult } from "./schemas/source";
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "fs";
@@ -8,12 +8,11 @@ import { join } from "path";
 import { scoreSource, tierLabel, sortByTier } from "./sourcing";
 import { z } from "zod";
 
-// Extract a list of distinct methods/frameworks/datasets mentioned in learnings
-// BEFORE main evidence extraction, then inject into the evidence prompt as
-// "MUST mention at least one claim for each of these".
+// Extract a list of distinct named entities from learnings before fact
+// extraction, then require the extractor to cover each.
 async function extractMethodPool(learnings: string[]): Promise<string[]> {
   if (learnings.length === 0) return [];
-  const prompt = `Below are factual learnings from a research task. Identify ALL distinct methods, frameworks, models, benchmarks, and datasets mentioned by name. Do NOT include generic terms ("quantization", "inference") — only NAMED entities (e.g. "TurboQuant", "Llama-3", "WikiText-103", "vLLM", "NVFP4").
+  const prompt = `Below are factual learnings from a research subquestion. Identify ALL distinct methods, frameworks, models, benchmarks, and datasets mentioned by name. Do NOT include generic terms ("quantization", "inference") — only NAMED entities (e.g. "TurboQuant", "Llama-3", "WikiText-103", "vLLM", "NVFP4").
 
 Return JSON: {"entities": ["Name1", "Name2", ...]}
 
@@ -30,7 +29,6 @@ ${learnings.map((l, i) => `L${i + 1}. ${l.slice(0, 300)}`).join("\n")}`;
       maxRetries: 1,
       endpoint: config.endpoints.evidence,
     });
-    // Dedup case-insensitive, preserve longest form
     const dedup = new Map<string, string>();
     for (const e of object.entities) {
       const key = e.toLowerCase();
@@ -43,24 +41,32 @@ ${learnings.map((l, i) => `L${i + 1}. ${l.slice(0, 300)}`).join("\n")}`;
   }
 }
 
-const EVIDENCE_SYSTEM = `You are an evidence extraction specialist. Convert harvester-extracted LEARNINGS into formal CLAIMS linked to specific sources.
+const EVIDENCE_SYSTEM = `You are a fact extraction specialist. Convert harvester-collected LEARNINGS into structured FACTS that can be cited in a research report.
 
-## A claim vs a learning
+## A fact vs a learning
 
-- A learning is just a fact ("KIVI achieves 2-bit quantization with near-zero perplexity loss").
-- A claim is a learning POSITIONED AGAINST the hypothesis ("supports H1", "contradicts H1", or "neutral context"), tied to the specific source URL that contains it, with a confidence score.
+- A learning is a raw observation extracted from source prose ("KIVI achieves 2-bit quantization with near-zero perplexity loss on Llama-2-7B").
+- A fact is that learning formalized with: the research subquestion it informs, the source URL that attests to it, a factuality classification (quantitative/qualitative/comparative/background), and a confidence score.
+
+Crucially: facts are NOT tagged as supports/contradicts. This pipeline is QUESTION-FIRST — there is no pre-committed hypothesis to support or refute. Just report what the source says; the analyzer later surfaces tensions between facts.
 
 ## Output requirements
 
-1. COVERAGE: Extract 15-25 claims per task — one claim per DISTINCT fact. Do NOT merge different methods/results into a single claim.
-2. DIVERSITY: If learnings mention distinct methods (TurboQuant, KIVI, KVQuant, MiniKV, KV-Compress, CSKV, Kitty, AKVQ-VL, Coupled Quantization, PagedAttention, R-KV, Q4_K_M, AWQ, GPTQ, NVFP4, FP8, INT4, BF16), create a SEPARATE claim for EACH — list at the top of your mental model and check them off.
-3. NEGATIVE CLAIMS REQUIRED: For each task, include AT LEAST 1 claim of type "contradicts" if ANY learning reports a failure, limitation, counter-example, or negative result. Research without contradictions is suspect.
-4. NUMERIC PRIORITY: Every claim SHOULD contain a specific number, model name, or dataset name. If a learning has no specifics, rank its confidence <= 0.5 and consider skipping.
-5. SOURCE ATTRIBUTION:
-   - Each claim cites EXACTLY ONE source URL.
+1. COVERAGE: Extract 15-25 facts per subquestion — one fact per DISTINCT piece of information. Do NOT merge different methods/results into a single fact.
+2. DIVERSITY: If learnings mention distinct methods (TurboQuant, KIVI, KVQuant, MiniKV, KV-Compress, CSKV, Kitty, AKVQ-VL, Coupled Quantization, PagedAttention, R-KV, Q4_K_M, AWQ, GPTQ, NVFP4, FP8, INT4, BF16), create a SEPARATE fact for EACH.
+3. NUMERIC PRIORITY: Every fact SHOULD contain a specific number, model name, benchmark name, or dataset name. If a learning has no specifics, rank its confidence <=0.5 and skip unless it's a named-entity anchor (background category).
+4. SOURCE ATTRIBUTION:
+   - Each fact cites EXACTLY ONE source URL from the catalog.
    - STRONGLY PREFER [primary] > [official] > [code] > [blog] > [community]. Catalog is sorted best-first.
-   - Use exact_quote = the learning text VERBATIM (do not paraphrase).
+   - exact_quote = the learning text VERBATIM (do not paraphrase).
    - title = the source's title from the catalog.
+
+## Factuality categories
+
+- quantitative: contains a specific number (percentages, ratios, latencies, bit-widths)
+- qualitative: names a mechanism or capability without a number ("KIVI uses per-channel keys")
+- comparative: direct comparison between two methods / models ("GPTQ 8-19% faster than AWQ on RTX 5090")
+- background: framework / format / anchor mention without numbers (Q4_K_M, TensorRT-LLM, PagedAttention as context)
 
 ## Confidence calibration
 
@@ -70,11 +76,17 @@ const EVIDENCE_SYSTEM = `You are an evidence extraction specialist. Convert harv
 - 0.3-0.5: Single-source blog claim, vague benchmark.
 - <0.3: Filter out — do not extract.
 
+## COMPARATIVE-METHOD COVERAGE (critical)
+
+Research papers compare a hero method against 3-8 baselines in tables. Extract a DISTINCT fact for EACH non-hero method the paper reports a number for — even if that method is "background". Readers need the whole landscape.
+
+Also extract BACKGROUND mentions even without numbers: if a paper names a framework (TensorRT-LLM, llama.cpp), format (Q4_K_M, Q4_0, GGUF), or well-known method (PagedAttention, FlashAttention) in its related-work or setup, include at least one fact naming that entity as factuality="background".
+
 ## Anti-patterns
 
 - DO NOT invent facts not present in learnings.
-- DO NOT merge "INT4 quantization works for Llama AND Gemma" into one claim if source only says it for Llama.
-- DO NOT extract claims without at least one from the method-pool when learnings contain them.
+- DO NOT merge "INT4 works for Llama AND Gemma" if source only says it for Llama.
+- DO NOT extract without at least one fact per named entity when learnings contain them.
 - DO NOT pad confidence scores (vague = low score).
 
 Output JSON only matching the schema.`;
@@ -101,7 +113,6 @@ function findBestSourceForLearning(
   sources: SearchResult[],
   contentDir: string
 ): SearchResult | null {
-  // Strategy: find any source whose scraped content contains at least a substantial chunk of the learning.
   const normLearning = learning.toLowerCase().replace(/\s+/g, " ").trim();
   const keyPhrase = normLearning.slice(0, Math.min(60, normLearning.length));
 
@@ -112,7 +123,6 @@ function findBestSourceForLearning(
     if (normContent.includes(keyPhrase)) return src;
   }
 
-  // Fallback: first source with matching title keywords
   const words = normLearning.split(/\s+/).filter((w) => w.length > 4).slice(0, 5);
   for (const src of sources) {
     const title = (src.title ?? "").toLowerCase();
@@ -120,67 +130,60 @@ function findBestSourceForLearning(
     if (matches >= 2) return src;
   }
 
-  // Last resort: first source
   return sources[0] ?? null;
 }
 
 export async function extractEvidence(
   plan: ResearchPlan,
   projectDir: string
-): Promise<Claim[]> {
+): Promise<Fact[]> {
   const sourcesDir = join(projectDir, "sources");
   const contentDir = join(sourcesDir, "content");
+  // Subquestion cache files follow pattern Q<n>.<m>.json
   const sourceFiles = readdirSync(sourcesDir).filter(
-    (f) => f.startsWith("T") && f.endsWith(".json")
+    (f) => /^Q\d+(\.\d+)?\.json$/.test(f)
   );
 
-  // Run tasks in parallel with bounded concurrency. Qwen Runpod endpoint
-  // has 5 slots; verify uses some, so cap evidence at 3 concurrent tasks.
-  // Sequential claim IDs are assigned AFTER all tasks finish to avoid
-  // interleaving across parallel tasks.
+  // Run subquestions in parallel with bounded concurrency.
+  // Qwen endpoint has 5 slots; verify runs after so evidence may use all 5.
   const EVIDENCE_CONCURRENCY = 3;
-  const allClaims: Claim[] = [];
-  const taskResults: Array<{ taskId: string; claims: Claim[] }> = [];
+  const allFacts: Fact[] = [];
+  const unitResults: Array<{ subquestionId: string; facts: Fact[] }> = [];
 
-  async function processTask(file: string): Promise<void> {
+  async function processUnit(file: string): Promise<void> {
     const sourceIndex: SourceIndex = JSON.parse(
       readFileSync(join(sourcesDir, file), "utf-8")
     );
     if (sourceIndex.results.length === 0) return;
 
-    const hypothesis = plan.hypotheses.find(
-      (h) => h.id === sourceIndex.hypothesis_id
-    );
-    if (!hypothesis) return;
-
     const learnings: string[] = (sourceIndex as any).learnings ?? [];
     if (learnings.length === 0) {
-      console.log(`[evidence] ${sourceIndex.task_id}: skipped (no learnings)`);
+      console.log(`[evidence] ${sourceIndex.subquestion_id}: skipped (no learnings)`);
       return;
     }
 
-    // H5: extract named-entity pool BEFORE evidence extraction.
-    // Fast-fail: wrap in timeout — if method-pool takes >60s, skip it and
-    // proceed with empty pool. Better to lose coverage hint than hang.
     const methodPool = await Promise.race([
       extractMethodPool(learnings),
       new Promise<string[]>((resolve) =>
         setTimeout(() => {
-          console.warn(`[evidence] ${sourceIndex.task_id}: method-pool timeout (60s) — skipping`);
+          console.warn(
+            `[evidence] ${sourceIndex.subquestion_id}: method-pool timeout (60s) — skipping`
+          );
           resolve([]);
         }, 60_000)
       ),
     ]);
     if (methodPool.length > 0) {
       console.log(
-        `[evidence] ${sourceIndex.task_id}: method-pool (${methodPool.length}): ${methodPool.slice(0, 8).join(", ")}${methodPool.length > 8 ? "..." : ""}`
+        `[evidence] ${sourceIndex.subquestion_id}: method-pool (${methodPool.length}): ${methodPool.slice(0, 8).join(", ")}${methodPool.length > 8 ? "..." : ""}`
       );
     }
 
-    // Build compact source catalog (title + url + tier), sorted primary-first
     const sortedResults = sortByTier(sourceIndex.results, (r) => r.url);
     const sourceCatalog = sortedResults
-      .map((r, i) => `[S${i + 1}] [${tierLabel(scoreSource(r.url))}] ${r.title}\n  ${r.url}`)
+      .map(
+        (r, i) => `[S${i + 1}] [${tierLabel(scoreSource(r.url))}] ${r.title}\n  ${r.url}`
+      )
       .join("\n");
 
     const tierCounts: Record<string, number> = {};
@@ -193,13 +196,22 @@ export async function extractEvidence(
       .map((l, i) => `L${i + 1}. ${l}`)
       .join("\n");
 
-    const methodPoolBlock = methodPool.length > 0
-      ? `\nREQUIRED COVERAGE — every one of these named entities from the learnings MUST be cited by at least one claim if the learnings support it. Miss none:\n${methodPool.map((m) => `  - ${m}`).join("\n")}\n`
-      : "";
+    const methodPoolBlock =
+      methodPool.length > 0
+        ? `\nREQUIRED COVERAGE — every one of these named entities from the learnings MUST be cited by at least one fact if the learnings support it. Miss none:\n${methodPool
+            .map((m) => `  - ${m}`)
+            .join("\n")}\n`
+        : "";
 
-    const prompt = `Hypothesis ${hypothesis.id}: "${hypothesis.statement}"
+    const question = plan.questions.find((q) => q.id === sourceIndex.question_id);
+    const subquestion = question?.subquestions.find(
+      (s) => s.id === sourceIndex.subquestion_id
+    );
+    const questionContext = question
+      ? `Research question ${question.id} [${question.category}]: ${question.question}\nSubquestion ${subquestion?.id ?? sourceIndex.subquestion_id} [${subquestion?.angle ?? ""}]: ${subquestion?.text ?? ""}`
+      : `Subquestion ${sourceIndex.subquestion_id}`;
 
-Task: ${sourceIndex.task_id}
+    const prompt = `${questionContext}
 ${methodPoolBlock}
 LEARNINGS extracted by harvester from full scraped content (${learnings.length}):
 ${learningsBlock}
@@ -207,38 +219,38 @@ ${learningsBlock}
 SOURCES consulted (${sourceIndex.results.length} URLs):
 ${sourceCatalog}
 
-For each learning, produce a claim:
+For each learning, produce a fact:
 - statement: the learning text (may be lightly rephrased but keep all numbers/names)
-- type: supports | contradicts | neutral (relative to hypothesis)
+- factuality: quantitative | qualitative | comparative | background
 - confidence: 0.0-1.0
+- question_id: ${sourceIndex.question_id}
+- subquestion_id: ${sourceIndex.subquestion_id}
 - references: array with {url, title, exact_quote=the learning text verbatim}; pick the most plausible source URL from the catalog
 
-Output JSON only (claim IDs will be assigned after all tasks finish).`;
+Output JSON only (fact IDs will be assigned after all subquestions finish).`;
 
     console.log(
-      `[evidence] ${sourceIndex.task_id}: ${learnings.length} learnings, ${sourceIndex.results.length} sources (${Object.entries(tierCounts).map(([t, n]) => `${t}:${n}`).join(" ")}) → ${hypothesis.id}`
+      `[evidence] ${sourceIndex.subquestion_id}: ${learnings.length} learnings, ${sourceIndex.results.length} sources (${Object.entries(tierCounts)
+        .map(([t, n]) => `${t}:${n}`)
+        .join(" ")}) → ${sourceIndex.question_id}`
     );
 
     try {
       const { object } = await generateJson({
-        schema: ClaimExtractionSchema,
+        schema: FactExtractionSchema,
         system: EVIDENCE_SYSTEM,
         prompt,
         temperature: 0.2,
         endpoint: config.endpoints.evidence,
       });
 
-      // Post-process: ensure each claim's reference URL is in the actual sources catalog,
-      // and attach the best matching source via our substring heuristic if LLM picked wrong.
-      const taskClaims: Claim[] = [];
-      for (const claim of object.claims) {
-        // ID assigned after all parallel tasks finish (see post-processing below)
-        claim.hypothesis_id = hypothesis.id;
+      const unitFacts: Fact[] = [];
+      for (const fact of object.facts) {
+        fact.question_id = sourceIndex.question_id;
+        fact.subquestion_id = sourceIndex.subquestion_id;
 
-        // Validate + fix references
         const validRefs = [];
-        for (const ref of claim.references ?? []) {
-          // If LLM's URL matches a known source, keep it
+        for (const ref of fact.references ?? []) {
           const matchingSrc = sourceIndex.results.find(
             (s) =>
               s.url === ref.url ||
@@ -249,12 +261,11 @@ Output JSON only (claim IDs will be assigned after all tasks finish).`;
             validRefs.push({
               url: matchingSrc.url,
               title: matchingSrc.title,
-              exact_quote: ref.exact_quote ?? claim.statement,
+              exact_quote: ref.exact_quote ?? fact.statement,
             });
           } else {
-            // LLM made up URL — pin to best-matching real source
             const best = findBestSourceForLearning(
-              claim.statement,
+              fact.statement,
               sourceIndex.results,
               contentDir
             );
@@ -262,15 +273,14 @@ Output JSON only (claim IDs will be assigned after all tasks finish).`;
               validRefs.push({
                 url: best.url,
                 title: best.title,
-                exact_quote: claim.statement,
+                exact_quote: fact.statement,
               });
             }
           }
         }
         if (validRefs.length === 0) {
-          // No refs at all — attach best-guess source
           const best = findBestSourceForLearning(
-            claim.statement,
+            fact.statement,
             sourceIndex.results,
             contentDir
           );
@@ -278,69 +288,67 @@ Output JSON only (claim IDs will be assigned after all tasks finish).`;
             validRefs.push({
               url: best.url,
               title: best.title,
-              exact_quote: claim.statement,
+              exact_quote: fact.statement,
             });
           }
         }
-        claim.references = validRefs;
+        fact.references = validRefs;
 
-        taskClaims.push(claim);
+        unitFacts.push(fact);
       }
 
-      taskResults.push({ taskId: sourceIndex.task_id, claims: taskClaims });
+      unitResults.push({ subquestionId: sourceIndex.subquestion_id, facts: unitFacts });
       console.log(
-        `[evidence]   ${sourceIndex.task_id}: +${taskClaims.length} claims`
+        `[evidence]   ${sourceIndex.subquestion_id}: +${unitFacts.length} facts`
       );
     } catch (err: any) {
       console.warn(
-        `[evidence]   ${sourceIndex.task_id} failed: ${err.message?.slice(0, 100)}`
+        `[evidence]   ${sourceIndex.subquestion_id} failed: ${err.message?.slice(0, 100)}`
       );
     }
   }
 
-  // Run tasks in parallel with bounded concurrency
-  const taskQueue = [...sourceFiles];
+  const queue = [...sourceFiles];
   const workers: Promise<void>[] = [];
   for (let i = 0; i < EVIDENCE_CONCURRENCY; i++) {
     workers.push(
       (async () => {
-        while (taskQueue.length > 0) {
-          const file = taskQueue.shift();
+        while (queue.length > 0) {
+          const file = queue.shift();
           if (!file) return;
-          await processTask(file);
+          await processUnit(file);
         }
       })()
     );
   }
   await Promise.all(workers);
 
-  // Assign sequential claim IDs in stable task order (by task_id ascending)
-  // so downstream references stay deterministic across re-runs.
-  taskResults.sort((a, b) => a.taskId.localeCompare(b.taskId));
+  // Assign sequential fact IDs in stable subquestion order (Q1.1, Q1.2, Q2.1, ...)
+  unitResults.sort((a, b) => a.subquestionId.localeCompare(b.subquestionId, undefined, { numeric: true }));
   let counter = 0;
-  for (const tr of taskResults) {
-    for (const claim of tr.claims) {
+  for (const unit of unitResults) {
+    for (const fact of unit.facts) {
       counter++;
-      claim.id = `C${counter}`;
-      allClaims.push(claim);
+      fact.id = `F${counter}`;
+      allFacts.push(fact);
     }
   }
 
   // Dedup by statement similarity (first 120 chars)
   const seen = new Set<string>();
-  const deduped = allClaims.filter((c) => {
-    const key = c.statement.toLowerCase().trim().slice(0, 120);
+  const deduped = allFacts.filter((f) => {
+    const key = f.statement.toLowerCase().trim().slice(0, 120);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 
-  const claimsPath = join(projectDir, "claims.json");
-  writeFileSync(claimsPath, JSON.stringify(deduped, null, 2));
+  const factsPath = join(projectDir, "facts.json");
+  writeFileSync(factsPath, JSON.stringify(deduped, null, 2));
   console.log(
-    `[evidence] Total: ${deduped.length} unique claims (${allClaims.length - deduped.length} duplicates)`
+    `[evidence] Total: ${deduped.length} unique facts (${allFacts.length - deduped.length} duplicates)`
   );
-  console.log(`[evidence] Written: ${claimsPath}`);
+  console.log(`[evidence] Written: ${factsPath}`);
 
   return deduped;
 }

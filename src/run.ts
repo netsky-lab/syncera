@@ -2,10 +2,10 @@ import { makePlan } from "./planner";
 import { harvest } from "./harvester";
 import { extractEvidence } from "./evidence";
 import { verifyAll } from "./verifier";
-import { runCritic } from "./critic";
+import { analyze } from "./analyzer";
 import { synthesize } from "./synthesizer";
 import type { ResearchPlan } from "./schemas/plan";
-import type { Claim } from "./schemas/claim";
+import type { Fact } from "./schemas/fact";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 
@@ -34,7 +34,7 @@ async function main() {
   console.log(`Topic: ${topic}`);
   console.log(`Project: ${projectDir}\n`);
 
-  for (const sub of ["hypotheses", "sources", "runs"]) {
+  for (const sub of ["sources", "runs"]) {
     mkdirSync(join(projectDir, sub), { recursive: true });
   }
 
@@ -49,14 +49,14 @@ async function main() {
     console.log("[phase:plan] Generating research plan...");
     const t0 = Date.now();
     plan = await makePlan({ topic, constraints });
-    console.log(`[phase:plan] Done in ${((Date.now() - t0) / 1000).toFixed(1)}s — ${plan.hypotheses.length} hypotheses, ${plan.tasks.length} tasks\n`);
+    const subqCount = plan.questions.reduce(
+      (n, q) => n + q.subquestions.length,
+      0
+    );
+    console.log(
+      `[phase:plan] Done in ${((Date.now() - t0) / 1000).toFixed(1)}s — ${plan.questions.length} questions, ${subqCount} subquestions\n`
+    );
     writeFileSync(planPath, JSON.stringify(plan, null, 2));
-    for (const h of plan.hypotheses) {
-      writeFileSync(
-        join(projectDir, "hypotheses", `${h.id}.md`),
-        [`# ${h.id}: ${h.statement}`, "", "## Acceptance Criteria", ...h.acceptance_criteria.map((c) => `- **${c.name}**: ${c.threshold}`), "", "## Status", "- [ ] Research complete", "- [ ] Validated", ""].join("\n")
-      );
-    }
   }
 
   // --- Phase 2: Harvester ---
@@ -72,18 +72,22 @@ async function main() {
       force: process.argv.includes("--reharvest"),
     });
     const total = sources.reduce((n, s) => n + s.results.length, 0);
-    console.log(`[phase:harvest] Done in ${((Date.now() - t1) / 1000).toFixed(1)}s — ${total} sources\n`);
+    console.log(
+      `[phase:harvest] Done in ${((Date.now() - t1) / 1000).toFixed(1)}s — ${total} sources\n`
+    );
   }
 
-  // --- Phase 3: Evidence ---
-  const claimsPath = join(projectDir, "claims.json");
-  if (existsSync(claimsPath) && !process.argv.includes("--re-evidence")) {
-    console.log("[phase:evidence] Using existing claims.json");
+  // --- Phase 3: Evidence (facts extraction) ---
+  const factsPath = join(projectDir, "facts.json");
+  if (existsSync(factsPath) && !process.argv.includes("--re-evidence")) {
+    console.log("[phase:evidence] Using existing facts.json");
   } else {
-    console.log("[phase:evidence] Extracting claims from sources...");
+    console.log("[phase:evidence] Extracting facts from sources...");
     const t2 = Date.now();
-    const claims = await extractEvidence(plan, projectDir);
-    console.log(`[phase:evidence] Done in ${((Date.now() - t2) / 1000).toFixed(1)}s — ${claims.length} claims\n`);
+    const facts = await extractEvidence(plan, projectDir);
+    console.log(
+      `[phase:evidence] Done in ${((Date.now() - t2) / 1000).toFixed(1)}s — ${facts.length} facts\n`
+    );
   }
 
   // --- Phase 3.5: Verifier ---
@@ -91,55 +95,67 @@ async function main() {
   if (existsSync(verificationPath) && !process.argv.includes("--re-verify")) {
     console.log("[phase:verify] Using existing verification.json");
   } else {
-    console.log("[phase:verify] Fact-checking claims against sources...");
+    console.log("[phase:verify] Fact-checking facts against sources...");
     const tv = Date.now();
-    const claimsForVerify: Claim[] = JSON.parse(
-      readFileSync(join(projectDir, "claims.json"), "utf-8")
+    const facts: Fact[] = JSON.parse(readFileSync(factsPath, "utf-8"));
+    await verifyAll({ facts, projectDir, concurrency: 5 });
+    console.log(
+      `[phase:verify] Done in ${((Date.now() - tv) / 1000).toFixed(1)}s\n`
     );
-    await verifyAll({
-      claims: claimsForVerify,
-      projectDir,
-      concurrency: 5,
-    });
-    console.log(`[phase:verify] Done in ${((Date.now() - tv) / 1000).toFixed(1)}s\n`);
   }
 
-  // --- Phase 4: Critic ---
-  const criticPath = join(projectDir, "critic_report.json");
-  if (existsSync(criticPath) && !process.argv.includes("--re-critic")) {
-    console.log("[phase:critic] Using existing critic_report.json");
+  // --- Phase 4: Analyzer ---
+  const analysisPath = join(projectDir, "analysis_report.json");
+  if (existsSync(analysisPath) && !process.argv.includes("--re-analyze")) {
+    console.log("[phase:analyze] Using existing analysis_report.json");
   } else {
-    console.log("[phase:critic] Running critic...");
+    console.log("[phase:analyze] Synthesizing per-question answers...");
     const t3 = Date.now();
-    const report = await runCritic(plan, projectDir);
-    console.log(`[phase:critic] Done in ${((Date.now() - t3) / 1000).toFixed(1)}s\n`);
+    await analyze(plan, projectDir);
+    console.log(
+      `[phase:analyze] Done in ${((Date.now() - t3) / 1000).toFixed(1)}s\n`
+    );
   }
 
   // --- Phase 5: Synthesizer ---
   console.log("[phase:synth] Generating final report...");
   const t4 = Date.now();
   await synthesize(plan, projectDir);
-  console.log(`[phase:synth] Done in ${((Date.now() - t4) / 1000).toFixed(1)}s\n`);
+  console.log(
+    `[phase:synth] Done in ${((Date.now() - t4) / 1000).toFixed(1)}s\n`
+  );
 
   // --- Update README ---
-  const claims = JSON.parse(readFileSync(join(projectDir, "claims.json"), "utf-8"));
-  const criticReport = JSON.parse(readFileSync(join(projectDir, "critic_report.json"), "utf-8"));
+  const facts: Fact[] = JSON.parse(readFileSync(factsPath, "utf-8"));
+  const analysisReport = JSON.parse(readFileSync(analysisPath, "utf-8"));
+  const coverageTally: Record<string, number> = {};
+  for (const a of analysisReport.answers ?? []) {
+    coverageTally[a.coverage] = (coverageTally[a.coverage] ?? 0) + 1;
+  }
   const readme = [
     `# ${plan.topic}`,
     "",
     `**Generated**: ${new Date().toISOString()}`,
-    `**Overall Confidence**: ${(criticReport.overall_confidence * 100).toFixed(0)}%`,
-    `**Validation needed**: ${plan.validation_needed}`,
-    plan.validation_infra ? `**Validation infra**: ${plan.validation_infra}` : "",
+    `**Questions**: ${plan.questions.length}`,
+    `**Facts**: ${facts.length}`,
+    `**Coverage tally**: ${Object.entries(coverageTally).map(([k, n]) => `${k}:${n}`).join(" / ")}`,
     "",
-    "## Hypotheses",
-    ...criticReport.hypothesis_assessments.map((a: any) => {
-      const h = plan.hypotheses.find((h) => h.id === a.hypothesis_id);
-      const icon = a.status === "well_supported" ? "[x]" : a.status === "contradicted" ? "[-]" : "[ ]";
-      return `- ${icon} **${a.hypothesis_id}** (${a.status}, ${(a.confidence * 100).toFixed(0)}%): ${h?.statement ?? ""}`;
+    "## Questions",
+    ...plan.questions.map((q) => {
+      const a = analysisReport.answers?.find(
+        (x: any) => x.question_id === q.id
+      );
+      const icon =
+        a?.coverage === "complete"
+          ? "[x]"
+          : a?.coverage === "partial"
+            ? "[~]"
+            : a?.coverage === "gaps_critical"
+              ? "[!]"
+              : "[ ]";
+      return `- ${icon} **${q.id}** [${q.category}]: ${q.question}`;
     }),
     "",
-    `## Evidence: ${claims.length} claims extracted`,
     `## Report: [REPORT.md](./REPORT.md)`,
   ].join("\n");
   writeFileSync(join(projectDir, "README.md"), readme);

@@ -10,8 +10,8 @@ export const SearchResultSchema = z.object({
 });
 
 export const SourceIndexSchema = z.object({
-  task_id: z.string(),
-  hypothesis_id: z.string(),
+  question_id: z.string().describe("Research question this index belongs to"),
+  subquestion_id: z.string().default("").describe("Subquestion within the question (optional)"),
   queries: z.array(z.string()),
   results: z.array(SearchResultSchema),
   collected_at: z.string(),
