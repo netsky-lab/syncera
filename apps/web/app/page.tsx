@@ -2,6 +2,7 @@ import { listProjects } from "@/lib/projects";
 import { Card, CardContent } from "@/components/ui/card";
 import { NewResearchForm } from "@/components/new-research";
 import { ProjectsList } from "@/components/projects-list";
+import { ActiveRuns } from "@/components/active-runs";
 
 export const dynamic = "force-dynamic";
 
@@ -108,6 +109,9 @@ export default function DashboardPage() {
           legacy hypothesis-first
         </div>
       )}
+
+      {/* Active / recent runs */}
+      <ActiveRuns />
 
       {/* New research form */}
       <section className="space-y-3">

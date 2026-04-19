@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "child_process";
 import { join } from "path";
 import { EventEmitter } from "events";
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 
 // Host-side path to bind-mount into pipeline containers. In dev this is the
 // repo root (two levels up from apps/web). In production the web container
@@ -142,12 +143,42 @@ export function getRun(runId: string): ActiveRun | undefined {
   return runs.get(runId);
 }
 
-export function listRuns(): { id: string; topic: string; slug: string; status: string; startedAt: number }[] {
-  return Array.from(runs.values()).map((r) => ({
-    id: r.id,
-    topic: r.topic,
-    slug: r.slug,
-    status: r.status,
-    startedAt: r.startedAt,
-  }));
+export function listRuns(): {
+  id: string;
+  topic: string;
+  slug: string;
+  status: string;
+  startedAt: number;
+  exitCode: number | null;
+  phase: string | null;
+  lastLine: string | null;
+}[] {
+  return Array.from(runs.values())
+    .map((r) => {
+      // Peek the most recent "phase:" line so consumers see current phase.
+      let phase: string | null = null;
+      let lastLine: string | null = null;
+      for (let i = r.events.length - 1; i >= 0 && i >= r.events.length - 60; i--) {
+        const ev = r.events[i];
+        if (ev?.line) {
+          if (!lastLine) lastLine = ev.line.slice(0, 160);
+          const m = ev.line.match(/\[phase:(\w+)\]/);
+          if (m && !phase) {
+            phase = m[1]!;
+            break;
+          }
+        }
+      }
+      return {
+        id: r.id,
+        topic: r.topic,
+        slug: r.slug,
+        status: r.status,
+        startedAt: r.startedAt,
+        exitCode: r.exitCode,
+        phase,
+        lastLine,
+      };
+    })
+    .sort((a, b) => b.startedAt - a.startedAt);
 }
