@@ -68,7 +68,7 @@ export async function synthesize(
     await Promise.all([
       genIntroduction(plan),
       genComparisonTable(plan, topFactsForPrompt),
-      genDeploymentSequence(plan, topFactsForPrompt),
+      genDeploymentSequence(plan, topFactsForPrompt, analysis),
       genRecommendation(plan, analysis),
     ]);
 
@@ -324,8 +324,20 @@ Return JSON: {"methods": [{"name":"...","headline_metric":"...","limitation":"..
 
 async function genDeploymentSequence(
   plan: ResearchPlan,
-  topFactsBlock: string
+  topFactsBlock: string,
+  analysis: AnalysisReport
 ): Promise<string[]> {
+  // Extract blockers: facts/methods analyzer flagged as unavailable.
+  // These are the methods we MUST NOT include deployment steps for,
+  // or must flag as experimental/unavailable when referencing.
+  const blockerSnippets = analysis.answers
+    .filter(
+      (a) => a.coverage === "insufficient" || a.coverage === "gaps_critical"
+    )
+    .map(
+      (a) => `${a.question_id} [${a.coverage}]: ${a.answer.slice(0, 220)}`
+    )
+    .join("\n");
   try {
     const { object } = await generateJson({
       schema: z.object({
@@ -342,12 +354,20 @@ FLAG AUTHENTICITY (critical):
 - If the cited fact names a method without a flag, reference the library / repo / paper, not a fabricated flag.
 - FORBIDDEN: invented flags like "--kv-cache-bits=3.5", "--kv-cache-dtype=kvquant".
 
+COHERENCE WITH ANALYZER (critical):
+- The analyzer already identified which questions could NOT be answered ("insufficient" or "gaps_critical" coverage). Below you'll see those answers. You MUST NOT propose a deployment step for a method the analyzer flagged as lacking a working implementation, native kernel, or integration path — doing so contradicts our own report and destroys credibility.
+- If a method is flagged as not deployable today, either (a) skip it entirely, or (b) include it as the EXPLICITLY experimental last step with wording like "Prototype <method> using the reference implementation at <repo>; note this lacks a <framework>-native kernel as reported in [F#]."
+- Prefer methods the analyzer identified as having concrete measurements from primary sources.
+
 Ordering: step 1 = most production-ready, step N = most experimental. 3-6 steps.
 
 Never use: significantly, substantially, important, effective, promising.
 
 Output JSON: {"steps": ["1. ...", "2. ..."]}`,
       prompt: `Topic: ${plan.topic}
+
+Analyzer-flagged limitations you must respect (DO NOT propose steps for methods these answers describe as not deployable):
+${blockerSnippets || "(none)"}
 
 Verified facts:
 ${topFactsBlock}
@@ -388,6 +408,11 @@ Rules:
 - Every factual claim cites [F#].
 - Pick ACTUAL methods from evidence — do not invent.
 - Never use: significantly, substantially, effective, impressive, important, promising.
+
+ANTI-SPECULATION (critical):
+- Do NOT chain facts from different methods or different papers into an unverified integration claim. If F100 says "method A exists" and F140 says "framework B exists", you CANNOT recommend "deploy A via B" unless a third fact explicitly documents that integration.
+- If the best-supported approach comes from a different setup (different model, hardware) than the topic's target, say so explicitly rather than pretending the fit is known.
+- If the analyzer marked most questions as "insufficient" / "gaps_critical", the honest primary recommendation is "run the specific benchmarks listed in the follow-ups section before committing to any stack", not a confident stack choice.
 
 Output JSON: {"recommendation": "<paragraph>"}`,
       prompt: `Topic: ${plan.topic}

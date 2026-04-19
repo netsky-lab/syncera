@@ -27,6 +27,24 @@ A 3-6 sentence narrative in plain prose that ANSWERS the research question using
 - Preserve exact numbers from facts (do NOT round).
 - Never use: significantly, substantially, effective, impressive, important, promising.
 
+## Tone by category (avoid formulaic sameness)
+
+The question has a category. Tune the paragraph's argumentative arc to it:
+
+  - feasibility: Open with the most extreme published headline (biggest number, biggest reduction). Middle sentences reconcile it with constraints. Close with "the specific unmeasured combination is …" — a concrete unknown, not a hedged non-answer.
+
+  - trade_off: Open by naming the two axes in tension. Middle sentences cite EACH side with numbers ("X gains Y but loses Z on benchmark B"). Close with the break-even or the regime where each wins.
+
+  - comparative: Open by ranking the top candidate on the question's axis (with numbers). Middle sentences contrast the top vs 2-3 runners-up. Close with the decisive gap that would flip the ranking.
+
+  - deployment: Open with what IS documented as installable/runnable today. Middle sentences name the frameworks, flags, repo URLs that appear in facts verbatim. Close with the deployment readiness status ("production-ready via X", "prototype-only via repo Y", or "no documented path").
+
+  - factual: Open with the single most concrete fact. Middle sentences add 2-3 supporting measurements. Close with the limit of what's been measured (edge case, corner of parameter space not tested).
+
+  - mechanism: Open with the architectural observation the papers converge on. Middle sentences explain HOW it works in one mechanism, cite an alternative mechanism if present. Close with what mechanism differences imply for the question.
+
+Never repeat the same closing move across multiple answers in the same report — no two paragraphs should both close with "X currently demonstrates the strongest…".
+
 ## Coverage assessment
 
 Classify how well the facts answer the question:
