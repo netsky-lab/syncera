@@ -1,4 +1,6 @@
 import { makePlan } from "./planner";
+import { scout } from "./scout";
+import type { ScoutDigest } from "./scout";
 import { harvest } from "./harvester";
 import { extractEvidence } from "./evidence";
 import { verifyAll } from "./verifier";
@@ -38,6 +40,31 @@ async function main() {
     mkdirSync(join(projectDir, sub), { recursive: true });
   }
 
+  // --- Phase 0: Scouting (new) ---
+  // Optional broad literature survey before planning. Calibrates the
+  // planner's questions against what actually exists in the field.
+  // Disable with SCOUT_DISABLED=1 or by caching scout_digest.json manually.
+  const scoutPath = join(projectDir, "scout_digest.json");
+  let scoutDigest: ScoutDigest | null = null;
+  if (existsSync(scoutPath) && !process.argv.includes("--rescout")) {
+    console.log("[phase:scout] Using existing scout_digest.json");
+    scoutDigest = JSON.parse(readFileSync(scoutPath, "utf-8"));
+  } else if (!existsSync(join(projectDir, "plan.json")) || process.argv.includes("--rescout")) {
+    console.log("[phase:scout] Surveying literature…");
+    const ts = Date.now();
+    scoutDigest = await scout(topic);
+    if (scoutDigest) {
+      writeFileSync(scoutPath, JSON.stringify(scoutDigest, null, 2));
+      console.log(
+        `[phase:scout] Done in ${((Date.now() - ts) / 1000).toFixed(1)}s\n`
+      );
+    } else {
+      console.log(
+        `[phase:scout] Scout returned no digest — planner will run without calibration context\n`
+      );
+    }
+  }
+
   // --- Phase 1: Planner ---
   let plan: ResearchPlan;
   const planPath = join(projectDir, "plan.json");
@@ -48,7 +75,7 @@ async function main() {
   } else {
     console.log("[phase:plan] Generating research plan...");
     const t0 = Date.now();
-    plan = await makePlan({ topic, constraints });
+    plan = await makePlan({ topic, constraints, scouting: scoutDigest });
     const subqCount = plan.questions.reduce(
       (n, q) => n + q.subquestions.length,
       0

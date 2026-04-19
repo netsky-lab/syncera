@@ -1,6 +1,7 @@
 import { generateJson } from "./llm";
 import { config } from "./config";
 import { ResearchPlanSchema, type ResearchPlan } from "./schemas/plan";
+import type { ScoutDigest } from "./scout";
 
 const PLANNER_SYSTEM_PROMPT = `You are a senior research planner. Produce a plan that structures LITERATURE RESEARCH around concrete questions the user wants answered.
 
@@ -73,13 +74,57 @@ JSON only, matching the schema. Do NOT include hypotheses, tasks, budget, or acc
 export interface PlannerInput {
   topic: string;
   constraints?: string;
+  scouting?: ScoutDigest | null;
 }
 
 export async function makePlan(input: PlannerInput): Promise<ResearchPlan> {
+  // If scouting digest is available, inline it into the planner prompt as
+  // ground truth the questions should reference. Planner learns what methods
+  // exist in literature and which open questions remain, rather than
+  // fabricating from Qwen's priors.
+  const scoutingBlock = input.scouting
+    ? [
+        "",
+        "=== SCOUTING DIGEST (ground truth from literature survey) ===",
+        "",
+        "Methods that appear in the literature:",
+        input.scouting.methods_in_literature.map((m) => `  - ${m}`).join("\n"),
+        "",
+        "Representative numbers observed:",
+        input.scouting.typical_numbers.map((n) => `  - ${n}`).join("\n"),
+        "",
+        "Open questions the literature still debates:",
+        input.scouting.open_questions.map((q) => `  - ${q}`).join("\n"),
+        "",
+        input.scouting.consensus_points.length > 0
+          ? "Consensus points (do NOT re-ask these):"
+          : "",
+        input.scouting.consensus_points.map((c) => `  - ${c}`).join("\n"),
+        "",
+        input.scouting.key_benchmarks.length > 0
+          ? "Benchmarks used by the field:"
+          : "",
+        input.scouting.key_benchmarks.map((b) => `  - ${b}`).join("\n"),
+        "",
+        input.scouting.hardware_constraints.length > 0
+          ? "Hardware/context constraints in scope:"
+          : "",
+        input.scouting.hardware_constraints.map((h) => `  - ${h}`).join("\n"),
+        "",
+        "=== PLANNING GUIDANCE ===",
+        "- Use method names from 'Methods that appear in the literature' verbatim when referencing them.",
+        "- Prefer open questions that are actually debated (listed above) over questions consensus already settled.",
+        "- Hardware/context constraints should be preserved verbatim in relevant questions.",
+        "",
+      ]
+        .filter((l) => l !== null && l !== undefined)
+        .join("\n")
+    : "";
+
   const prompt = [
     `Research topic: ${input.topic}`,
     input.constraints ? `Additional constraints: ${input.constraints}` : "",
-    "",
+    scoutingBlock,
     "Produce the research plan. Questions count must match the topic scope, not a target number.",
   ]
     .filter(Boolean)
