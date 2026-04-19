@@ -45,6 +45,10 @@ services:
       # Comma-separated list of accepted API keys for /api/* endpoints.
       # If unset, API routes require Basic Auth.
       API_KEYS: ${API_KEYS:-}
+      # CORS: "*" permissive (dev); pin to consumer origin in production.
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-*}
+      # Requests per minute per identity (API key or basic-auth).
+      API_RATE_LIMIT_PER_MIN: ${API_RATE_LIMIT_PER_MIN:-60}
       NODE_ENV: production
       # LLM endpoint + search used when the web UI spawns a pipeline run.
       # Override via deploy/.env.
