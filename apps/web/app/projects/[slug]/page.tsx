@@ -124,22 +124,39 @@ export default async function ProjectPage({
   if (isQuestionFirst) {
     return (
       <div className="min-h-screen">
-        {/* Minimal top bar */}
-        <div className="border-b border-border/50 bg-background/80 backdrop-blur-sm sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
-            <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 shrink-0">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Minimal top bar (adapted for mobile) */}
+        <div className="border-b border-border/50 bg-background/80 backdrop-blur-sm sticky top-0 md:top-0 z-10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-start sm:items-center gap-2 sm:gap-4 flex-wrap sm:flex-nowrap">
+            <Link
+              href="/"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 shrink-0"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path
+                  d="M15 18l-6-6 6-6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
               Projects
             </Link>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-[15px] font-semibold tracking-tight leading-snug truncate">
+            <div className="flex-1 min-w-0 order-last sm:order-none basis-full sm:basis-auto">
+              <h1 className="text-[13px] sm:text-[15px] font-semibold tracking-tight leading-snug line-clamp-2 sm:truncate">
                 {plan.topic}
               </h1>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Badge variant="outline" className="text-[10px] bg-sky-500/10 text-sky-300 border-sky-500/30">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Badge
+                variant="outline"
+                className="text-[10px] bg-sky-500/10 text-sky-300 border-sky-500/30"
+              >
                 question-first
               </Badge>
               <span className="text-[11px] text-muted-foreground font-mono">
@@ -147,14 +164,36 @@ export default async function ProjectPage({
               </span>
               <a
                 href={`/api/projects/${slug}/pdf`}
-                className="text-xs px-3 py-1.5 rounded-md border hover:bg-accent transition-colors inline-flex items-center gap-1.5"
+                className="text-xs px-2.5 sm:px-3 py-1.5 rounded-md border hover:bg-accent transition-colors inline-flex items-center gap-1.5"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" strokeLinecap="round" strokeLinejoin="round" />
-                  <polyline points="7 10 12 15 17 10" strokeLinecap="round" strokeLinejoin="round" />
-                  <line x1="12" y1="15" x2="12" y2="3" strokeLinecap="round" strokeLinejoin="round" />
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path
+                    d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <polyline
+                    points="7 10 12 15 17 10"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <line
+                    x1="12"
+                    y1="15"
+                    x2="12"
+                    y2="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
                 PDF
               </a>

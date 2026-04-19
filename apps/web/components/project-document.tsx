@@ -275,7 +275,7 @@ function QuestionSection({
       )}
 
       {(answer?.gaps?.length > 0 || answer?.follow_ups?.length > 0) && (
-        <div className="grid md:grid-cols-2 gap-3 mb-4">
+        <div className="grid sm:grid-cols-2 gap-3 mb-4">
           {answer?.gaps?.length > 0 && (
             <div className="p-3 rounded-md border border-border/60 bg-muted/20 space-y-1.5">
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
@@ -332,13 +332,24 @@ function QuestionSection({
                 <div
                   key={f.id}
                   id={f.id}
-                  className={`flex items-start gap-3 py-2 px-3 rounded-md border transition-all ${
+                  className={`flex flex-col sm:flex-row items-start gap-2 sm:gap-3 py-2 px-3 rounded-md border transition-all ${
                     rejected
                       ? "opacity-60 border-dashed border-border/50"
                       : "border-border/50 hover:border-border hover:bg-muted/20"
                   }`}
                 >
-                  <span className="font-mono text-[11px] text-muted-foreground shrink-0 pt-0.5 w-10">
+                  <div className="flex items-center gap-2 sm:hidden w-full justify-between">
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {f.id}
+                    </span>
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <FactualityBadge f={f.factuality} />
+                      <span className="font-mono tabular-nums text-muted-foreground">
+                        {(f.confidence * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  </div>
+                  <span className="hidden sm:inline font-mono text-[11px] text-muted-foreground shrink-0 pt-0.5 w-10">
                     {f.id}
                   </span>
                   <div className="flex-1 min-w-0 space-y-1">
@@ -350,13 +361,13 @@ function QuestionSection({
                         href={f.references[0].url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-block text-[11px] text-primary/80 hover:text-primary underline decoration-dotted truncate max-w-full"
+                        className="inline-block text-[11px] text-primary/80 hover:text-primary underline decoration-dotted break-all"
                       >
                         {f.references[0].title || f.references[0].url}
                       </a>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0 text-[10px]">
+                  <div className="hidden sm:flex items-center gap-1.5 shrink-0 text-[10px]">
                     <FactualityBadge f={f.factuality} />
                     <span className="font-mono tabular-nums text-muted-foreground">
                       {(f.confidence * 100).toFixed(0)}%
@@ -450,7 +461,7 @@ export function ProjectDocument({
   const activeSection = useActiveSection(tocIds);
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 grid lg:grid-cols-[1fr_15rem] gap-12">
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6 sm:py-8 grid lg:grid-cols-[1fr_15rem] gap-6 lg:gap-12">
       <article className="max-w-[70ch] min-w-0">
         {intro && (
           <section className="py-6 border-b border-border/50 mb-2">

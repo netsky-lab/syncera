@@ -138,17 +138,17 @@ export function ProjectsList({ projects }: { projects: Project[] }) {
           const findingCount = isQf ? p.facts : p.claims;
           return (
             <Link key={p.slug} href={`/projects/${p.slug}`}>
-              <Card className="group border-border/60 hover:border-primary/60 hover:shadow-lg hover:-translate-y-[1px] transition-all cursor-pointer py-0 bg-card/50">
-                <CardContent className="py-4 px-5">
-                  <div className="flex items-start gap-4">
+              <Card className="group border-border/60 hover:border-primary/60 hover:shadow-lg md:hover:-translate-y-[1px] transition-all cursor-pointer py-0 bg-card/50">
+                <CardContent className="py-4 px-4 sm:px-5">
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
                     <div className="flex-1 min-w-0 space-y-2">
                       <div className="flex items-start gap-2">
-                        <h2 className="flex-1 text-sm font-semibold leading-snug group-hover:text-primary transition-colors line-clamp-2">
+                        <h2 className="flex-1 text-[13px] sm:text-sm font-semibold leading-snug group-hover:text-primary transition-colors line-clamp-3 sm:line-clamp-2">
                           {p.topic}
                         </h2>
                         <SchemaBadge schema={p.schema} />
                       </div>
-                      <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+                      <div className="flex items-center gap-3 sm:gap-4 text-[11px] text-muted-foreground flex-wrap">
                         <span className="flex items-center gap-1.5">
                           <span className="font-mono tabular-nums text-foreground/80">
                             {topicCount}
@@ -168,7 +168,7 @@ export function ProjectsList({ projects }: { projects: Project[] }) {
                           sources
                         </span>
                         {p.learnings > 0 && (
-                          <span className="flex items-center gap-1.5">
+                          <span className="hidden sm:flex items-center gap-1.5">
                             <span className="font-mono tabular-nums text-foreground/80">
                               {p.learnings}
                             </span>{" "}
@@ -177,7 +177,7 @@ export function ProjectsList({ projects }: { projects: Project[] }) {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0 pt-0.5">
+                    <div className="flex items-center gap-2 sm:gap-3 shrink-0 sm:pt-0.5 self-start">
                       {!isQf && p.confidence > 0 && (
                         <ConfidenceBar value={p.confidence} />
                       )}

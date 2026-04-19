@@ -29,9 +29,27 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
     >
+      <head>
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, viewport-fit=cover"
+        />
+      </head>
       <body className="min-h-full bg-background text-foreground">
-        <div className="flex min-h-screen">
-          <aside className="w-56 border-r bg-muted/30 flex flex-col">
+        {/* Mobile top bar — replaces sidebar on narrow screens */}
+        <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 bg-background/90 backdrop-blur-sm border-b border-border/50">
+          <Link href="/" className="flex items-center gap-2 group">
+            <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold text-xs shadow-sm">
+              R
+            </div>
+            <div className="font-semibold text-sm tracking-tight">Research Lab</div>
+          </Link>
+          <span className="text-[10px] text-muted-foreground font-mono">v0.2</span>
+        </header>
+
+        <div className="flex md:min-h-screen">
+          {/* Desktop sidebar — hidden on mobile */}
+          <aside className="hidden md:flex w-56 border-r bg-muted/30 flex-col shrink-0">
             <div className="px-5 py-5 border-b">
               <Link href="/" className="flex items-center gap-2 group">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold text-sm shadow-sm">
@@ -42,7 +60,7 @@ export default function RootLayout({
                     Research Lab
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-1 leading-none">
-                    hypothesis-driven
+                    question-first
                   </div>
                 </div>
               </Link>
@@ -69,7 +87,7 @@ export default function RootLayout({
               </Link>
             </nav>
             <div className="px-5 py-3 border-t text-[10px] text-muted-foreground font-mono">
-              v0.1.0 · engine
+              v0.2.0 · engine
             </div>
           </aside>
           <main className="flex-1 min-w-0">{children}</main>

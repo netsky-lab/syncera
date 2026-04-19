@@ -55,10 +55,10 @@ export default function DashboardPage() {
   ).length;
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-10 space-y-10">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-10 space-y-8 md:space-y-10">
       {/* Hero */}
-      <header className="space-y-3 border-b border-border/50 pb-8">
-        <div className="flex items-center gap-2">
+      <header className="space-y-3 border-b border-border/50 pb-6 md:pb-8">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] uppercase tracking-widest bg-primary/10 text-primary border border-primary/20 font-semibold">
             Research Lab
           </span>
@@ -66,10 +66,10 @@ export default function DashboardPage() {
             v0.2 · question-first
           </span>
         </div>
-        <h1 className="text-4xl font-bold tracking-tight leading-tight">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight leading-tight">
           Hypothesis-free research, grounded in verified evidence.
         </h1>
-        <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
+        <p className="text-[13px] sm:text-sm text-muted-foreground max-w-2xl leading-relaxed">
           Turn a topic into a structured research report: planner decomposes
           it into literature-driven questions, harvester pulls primary sources
           across Arxiv / OpenAlex / SearXNG, facts are fact-checked against
@@ -78,8 +78,8 @@ export default function DashboardPage() {
         </p>
       </header>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-3">
+      {/* Stats — 2 cols on mobile, 4 on md+ */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Projects" value={totals.projects} accent="sky" />
         <StatCard
           label="Questions & Hypotheses"
