@@ -13,6 +13,264 @@ type ApiKey = {
   revoked_at: number | null;
 };
 
+type User = {
+  id: string;
+  email: string;
+  role: "admin" | "user";
+  created_at: number;
+  last_login_at: number | null;
+};
+
+function PasswordCard() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [msg, setMsg] = useState<
+    | { kind: "ok"; text: string }
+    | { kind: "err"; text: string }
+    | null
+  >(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/auth/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current, next }),
+      });
+      if (r.ok) {
+        setMsg({ kind: "ok", text: "Password updated" });
+        setCurrent("");
+        setNext("");
+      } else {
+        const d = await r.json().catch(() => ({}));
+        setMsg({ kind: "err", text: d.error ?? `Failed HTTP ${r.status}` });
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Card className="border-border/60">
+      <CardContent className="py-4 px-5 space-y-3">
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
+          Change password
+        </div>
+        <form onSubmit={handleSubmit} className="grid sm:grid-cols-2 gap-3">
+          <label className="space-y-1.5">
+            <div className="text-xs text-muted-foreground">Current</div>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+              className="w-full px-3 py-1.5 text-sm rounded-md border border-border bg-background focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+              required
+            />
+          </label>
+          <label className="space-y-1.5">
+            <div className="text-xs text-muted-foreground">
+              New <span className="text-muted-foreground/70">(min 8)</span>
+            </div>
+            <input
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              className="w-full px-3 py-1.5 text-sm rounded-md border border-border bg-background focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+              required
+            />
+          </label>
+          <div className="sm:col-span-2 flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={submitting || !current || next.length < 8}
+              className="text-sm px-4 py-1.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {submitting ? "Updating…" : "Update password"}
+            </button>
+            {msg && (
+              <span
+                className={`text-[13px] ${
+                  msg.kind === "ok" ? "text-emerald-400" : "text-red-400"
+                }`}
+              >
+                {msg.text}
+              </span>
+            )}
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function UsersSection() {
+  const [users, setUsers] = useState<User[] | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"user" | "admin">("user");
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  async function load() {
+    const r = await fetch("/api/admin/users");
+    if (r.ok) {
+      const d = await r.json();
+      setUsers(d.users);
+    } else if (r.status === 403) {
+      setUsers([]); // not admin, hide section
+    }
+  }
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setCreating(true);
+    setError(null);
+    try {
+      const r = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, role }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setError(d.error ?? `HTTP ${r.status}`);
+        return;
+      }
+      setEmail("");
+      setPassword("");
+      setRole("user");
+      await load();
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this user? They'll lose access immediately.")) return;
+    await fetch(`/api/admin/users/${id}`, { method: "DELETE" });
+    await load();
+  }
+
+  if (users === null) return null; // still loading
+  if (users.length === 0) return null; // not admin or genuinely empty
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold tracking-tight">Users</h2>
+        <span className="text-[11px] text-muted-foreground font-mono">
+          {users.length}
+        </span>
+      </div>
+
+      <Card className="border-border/60">
+        <CardContent className="py-4 px-5 space-y-3">
+          <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
+            Invite user
+          </div>
+          <form onSubmit={handleCreate} className="grid sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
+            <label>
+              <div className="text-xs text-muted-foreground mb-1">Email</div>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full px-3 py-1.5 text-sm rounded-md border border-border bg-background focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+              />
+            </label>
+            <label>
+              <div className="text-xs text-muted-foreground mb-1">
+                Temp password
+              </div>
+              <input
+                type="text"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={8}
+                className="w-full px-3 py-1.5 text-sm rounded-md border border-border bg-background font-mono focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+              />
+            </label>
+            <label>
+              <div className="text-xs text-muted-foreground mb-1">Role</div>
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value as any)}
+                className="px-3 py-1.5 text-sm rounded-md border border-border bg-background focus:outline-none focus:border-primary/50"
+              >
+                <option value="user">user</option>
+                <option value="admin">admin</option>
+              </select>
+            </label>
+            <button
+              type="submit"
+              disabled={creating || !email || password.length < 8}
+              className="text-sm px-4 py-1.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {creating ? "…" : "Add"}
+            </button>
+          </form>
+          {error && (
+            <div className="text-[13px] text-red-400 p-2 rounded-md bg-red-500/5 border border-red-500/20">
+              {error}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="space-y-2">
+        {users.map((u) => (
+          <Card key={u.id} className="border-border/60">
+            <CardContent className="py-3 px-4 flex items-center gap-3 flex-wrap">
+              <div className="flex-1 min-w-[200px] space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[13px] font-medium">{u.email}</span>
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] ${
+                      u.role === "admin"
+                        ? "bg-primary/10 text-primary border-primary/30"
+                        : ""
+                    }`}
+                  >
+                    {u.role}
+                  </Badge>
+                </div>
+                <div className="text-[11px] text-muted-foreground flex items-center gap-3 flex-wrap">
+                  <span>created {new Date(u.created_at).toLocaleDateString()}</span>
+                  <span>
+                    last login{" "}
+                    {u.last_login_at
+                      ? new Date(u.last_login_at).toLocaleString()
+                      : "never"}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => handleDelete(u.id)}
+                className="text-[11px] px-2.5 py-1 rounded border border-red-500/30 bg-red-500/5 text-red-400 hover:bg-red-500/15 hover:border-red-500/60 transition-colors"
+              >
+                Delete
+              </button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function timeFmt(ms: number | null): string {
   if (!ms) return "never";
   const d = new Date(ms);
@@ -93,6 +351,17 @@ export function SettingsContent() {
 
   return (
     <div className="space-y-6">
+      {/* Password change */}
+      <PasswordCard />
+
+      {/* Users (admin only) */}
+      <UsersSection />
+
+      {/* API key create form */}
+      <div className="pt-2 border-t border-border/40">
+        <h2 className="text-lg font-semibold tracking-tight mb-3">API keys</h2>
+      </div>
+
       {/* Create form */}
       <Card className="border-border/60">
         <CardContent className="py-4 px-5 space-y-3">

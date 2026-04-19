@@ -123,6 +123,33 @@ export function authenticate(
   return { ok: true, user: rest };
 }
 
+export function updatePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string
+): { ok: true } | { ok: false; error: string } {
+  if (!newPassword || newPassword.length < 8) {
+    return { ok: false, error: "New password must be at least 8 characters" };
+  }
+  const all = readAll();
+  const idx = all.findIndex((u) => u.id === userId);
+  if (idx === -1) return { ok: false, error: "User not found" };
+  if (!verifyPassword(currentPassword, all[idx]!.password_hash)) {
+    return { ok: false, error: "Current password is incorrect" };
+  }
+  all[idx]!.password_hash = hashPassword(newPassword);
+  writeAll(all);
+  return { ok: true };
+}
+
+export function deleteUser(id: string): boolean {
+  const all = readAll();
+  const next = all.filter((u) => u.id !== id);
+  if (next.length === all.length) return false;
+  writeAll(next);
+  return true;
+}
+
 // Seed admin from env on first use if store is empty.
 export function ensureAdminSeed(): void {
   const all = readAll();
