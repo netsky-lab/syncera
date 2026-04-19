@@ -3,11 +3,14 @@
 // /projects/<slug>/runs/ on disk.
 
 import { listRuns } from "@/lib/runner";
+import { requireAuth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = requireAuth(request);
+  if (!auth.ok) return auth.response;
   const runs = listRuns();
   return Response.json({
     count: runs.length,

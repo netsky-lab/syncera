@@ -2,11 +2,14 @@
 // Consumed by external apps to enumerate available research artifacts.
 
 import { listProjects } from "@/lib/projects";
+import { requireAuth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = requireAuth(request);
+  if (!auth.ok) return auth.response;
   const projects = listProjects();
   return Response.json({
     count: projects.length,

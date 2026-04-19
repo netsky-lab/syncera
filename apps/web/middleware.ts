@@ -1,39 +1,18 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// Dual-auth gate + CORS + token-bucket rate limit for /api/* routes.
+// Middleware responsibilities (Edge runtime — no fs access):
+//   - CORS preflight + response headers on /api/*
+//   - Token-bucket rate limit per identity on /api/*
+//   - Basic-Auth gate for HUMAN pages (/, /projects/..., /docs) when
+//     BASIC_AUTH_PASS is set
 //
-//   /api/*  accepts X-API-Key: <key> or Authorization: Bearer <key>
-//           or Basic Auth. API_KEYS=k1,k2 in env lists accepted keys.
-//           CORS preflight (OPTIONS) bypasses auth. CORS response headers
-//           always added if request has Origin. Rate limit: 60 req/min per
-//           API key or IP (token bucket, in-memory — survives only per
-//           server process).
-//
-//   Other paths accept Basic Auth only (human browser UI).
-//
-//   /_next/*, /favicon, /api/health bypass auth entirely.
-//
-// Env:
-//   BASIC_AUTH_USER / BASIC_AUTH_PASS  — human browser auth
-//   API_KEYS                           — comma-separated programmatic keys
-//   API_CORS_ORIGINS                   — comma-separated allowed origins
-//                                         (default: "*" which is permissive;
-//                                          for production pin to the
-//                                          consumer's domain)
-//   API_RATE_LIMIT_PER_MIN             — requests/min per identity, default 60
+// API auth (key validation) happens inside each route handler via
+// lib/auth.ts#requireAuth(), because Edge middleware can't read our
+// file-backed key store.
 
 const EXCLUDED_PREFIXES = ["/_next/", "/favicon", "/api/health"];
 
-function apiKeyFromRequest(req: NextRequest): string | null {
-  const headerKey = req.headers.get("x-api-key");
-  if (headerKey) return headerKey;
-  const auth = req.headers.get("authorization");
-  if (auth?.startsWith("Bearer ")) return auth.slice(7);
-  return null;
-}
-
-// --- CORS ---
 function corsHeaders(origin: string | null): Record<string, string> {
   const allowed = (process.env.API_CORS_ORIGINS ?? "*")
     .split(",")
@@ -45,14 +24,14 @@ function corsHeaders(origin: string | null): Record<string, string> {
   if (!allow) return {};
   return {
     "Access-Control-Allow-Origin": allow,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, X-API-Key, Authorization",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };
 }
 
-// --- Rate limit (in-memory token bucket, per identity) ---
+// In-memory token bucket for rate limiting
 type Bucket = { tokens: number; lastRefill: number };
 const buckets = new Map<string, Bucket>();
 const RATE_LIMIT_PER_MIN = Number(process.env.API_RATE_LIMIT_PER_MIN ?? 60);
@@ -80,6 +59,17 @@ function rateLimit(identity: string): {
   return { allowed: false, retryAfter, remaining: 0 };
 }
 
+function identityForRateLimit(req: NextRequest): string {
+  const h = req.headers.get("x-api-key");
+  if (h) return `key:${h.slice(0, 12)}`;
+  const a = req.headers.get("authorization");
+  if (a?.startsWith("Bearer ")) return `key:${a.slice(7, 19)}`;
+  if (a?.startsWith("Basic ")) return `basic:${a.slice(6, 20)}`;
+  // Fallback to client IP (best-effort)
+  const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "anon";
+  return `ip:${ip.split(",")[0]!.trim()}`;
+}
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   for (const p of EXCLUDED_PREFIXES) {
@@ -90,59 +80,19 @@ export function middleware(req: NextRequest) {
   const isApi = pathname.startsWith("/api/");
   const cors = isApi ? corsHeaders(origin) : {};
 
-  // CORS preflight short-circuits auth
+  // CORS preflight
   if (isApi && req.method === "OPTIONS") {
     return new NextResponse(null, { status: 204, headers: cors });
   }
 
-  const pass = process.env.BASIC_AUTH_PASS;
-  if (!pass && !process.env.API_KEYS) {
-    const r = NextResponse.next();
-    for (const [k, v] of Object.entries(cors)) r.headers.set(k, v);
-    return r;
-  }
-
   if (isApi) {
-    const validKeys = (process.env.API_KEYS ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const presentedKey = apiKeyFromRequest(req);
-    let identity: string | null = null;
-
-    if (presentedKey && validKeys.includes(presentedKey)) {
-      identity = `key:${presentedKey.slice(0, 8)}`;
-    } else {
-      const authHeader = req.headers.get("authorization");
-      if (pass && authHeader?.startsWith("Basic ")) {
-        const user = process.env.BASIC_AUTH_USER ?? "research";
-        const expected = "Basic " + btoa(`${user}:${pass}`);
-        if (authHeader === expected) identity = "basic";
-      }
-    }
-
-    if (!identity) {
-      return new NextResponse(
-        JSON.stringify({
-          error:
-            "Unauthorized — provide X-API-Key header or Basic auth credentials",
-        }),
-        {
-          status: 401,
-          headers: {
-            "Content-Type": "application/json",
-            "WWW-Authenticate": `Basic realm="Research Lab API", charset="UTF-8"`,
-            ...cors,
-          },
-        }
-      );
-    }
-
+    // Rate limit only — auth is in each route handler via requireAuth().
+    const identity = identityForRateLimit(req);
     const rl = rateLimit(identity);
     if (!rl.allowed) {
       return new NextResponse(
         JSON.stringify({
-          error: `Rate limit exceeded (${RATE_LIMIT_PER_MIN} req/min per key). Retry in ${rl.retryAfter}s.`,
+          error: `Rate limit exceeded. Retry in ${rl.retryAfter}s.`,
         }),
         {
           status: 429,
@@ -156,7 +106,6 @@ export function middleware(req: NextRequest) {
         }
       );
     }
-
     const r = NextResponse.next();
     for (const [k, v] of Object.entries(cors)) r.headers.set(k, v);
     r.headers.set("X-RateLimit-Limit", String(RATE_LIMIT_PER_MIN));
@@ -164,7 +113,8 @@ export function middleware(req: NextRequest) {
     return r;
   }
 
-  // Non-API routes — basic auth only
+  // Non-API pages — Basic Auth gate when configured
+  const pass = process.env.BASIC_AUTH_PASS;
   if (!pass) return NextResponse.next();
   const header = req.headers.get("authorization");
   const user = process.env.BASIC_AUTH_USER ?? "research";

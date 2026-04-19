@@ -65,6 +65,9 @@ services:
       # Writable mount — the pipeline (spawned from the web container)
       # writes new project artifacts here. Web UI serves them fresh.
       - ../projects:/app/projects:rw
+      # Persistent storage for app data (API keys, future sessions).
+      # Survives container rebuilds.
+      - ../data:/app/data:rw
       # Docker-out-of-docker: let the web container talk to the host
       # daemon so it can run pipeline containers on the same compose
       # network as searxng.
