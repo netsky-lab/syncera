@@ -44,9 +44,26 @@ interface ChatCallResult {
 // Always stream responses — prevents Cloudflare/proxy timeouts (524) on long
 // generations by keeping the connection active. Retries on transient 5xx.
 async function chatCompletion(opts: ChatCallOptions): Promise<ChatCallResult> {
-  const ep = opts.endpoint ?? config.gemma;
+  const primaryEp = opts.endpoint ?? config.gemma;
+  // Endpoint rotation: primary first, then each failover URL in order.
+  // On 5xx / timeout / network error, attempt N+1 tries the next endpoint
+  // (wrapping to primary when the list is exhausted). Keeps model / apiKey
+  // from the original endpoint — we assume failover pods run the same model.
+  const endpoints: EndpointConfig[] = [
+    primaryEp,
+    ...config.failover.map((f) => ({
+      baseURL: f.baseURL,
+      model: primaryEp.model,
+      apiKey: primaryEp.apiKey,
+    })),
+  ];
+
+  const maxAttempts = Math.max(4, endpoints.length);
+  let response: Response | null = null;
+  let lastError: string | null = null;
+  let ep: EndpointConfig = primaryEp;
   const body: Record<string, any> = {
-    model: ep.model,
+    model: primaryEp.model,
     messages: opts.messages,
     temperature: opts.temperature ?? 0.3,
     stream: true,
@@ -59,11 +76,16 @@ async function chatCompletion(opts: ChatCallOptions): Promise<ChatCallResult> {
     body.max_tokens = opts.maxTokens;
   }
 
-  const maxAttempts = 4;
-  let response: Response | null = null;
-  let lastError: string | null = null;
-
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Pick endpoint for this attempt: round-robin through the list so we
+    // exhaust the primary before repeating. At attempt 1 we're always on
+    // primary; at attempt N we're on endpoints[(N-1) % endpoints.length].
+    ep = endpoints[(attempt - 1) % endpoints.length]!;
+    if (attempt > 1 && endpoints.length > 1) {
+      console.warn(
+        `[llm] attempt ${attempt}/${maxAttempts} via failover endpoint: ${ep.baseURL}`
+      );
+    }
     // Per-request timeout — Cloudflare kills idle connections at ~100s;
     // a stuck streaming connection on our side should fail too.
     const reqController = new AbortController();

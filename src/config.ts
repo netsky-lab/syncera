@@ -20,8 +20,24 @@ const defaultEndpoint: EndpointConfig = {
   apiKey: process.env.GEMMA_API_KEY ?? "test",
 };
 
+// Optional failover endpoints. Comma-separated list of base URLs to try in
+// order when the primary returns 5xx or hangs past the inter-chunk timeout.
+// Model + API key are assumed shared across the fallback set (typical case:
+// multiple Runpod pods running the same model). Set GEMMA_FALLBACK_URLS=...
+// to enable.
+const fallbackUrls = (process.env.GEMMA_FALLBACK_URLS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const failoverEndpoints: EndpointConfig[] = fallbackUrls.map((url) => ({
+  baseURL: url,
+  model: process.env.GEMMA_MODEL ?? defaultEndpoint.model,
+  apiKey: process.env.GEMMA_API_KEY ?? defaultEndpoint.apiKey,
+}));
+
 export const config = {
   gemma: defaultEndpoint,
+  failover: failoverEndpoints,
   endpoints: {
     planner: endpoint("GEMMA_PLANNER", defaultEndpoint),
     harvester: endpoint("GEMMA_HARVESTER", defaultEndpoint),
