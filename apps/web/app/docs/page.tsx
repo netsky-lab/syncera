@@ -21,7 +21,18 @@ export default function DocsPage() {
           Fetch research artifacts programmatically. Provide an API key
           either via <code className="px-1.5 py-0.5 rounded bg-muted text-[12px] font-mono">X-API-Key: …</code> or{" "}
           <code className="px-1.5 py-0.5 rounded bg-muted text-[12px] font-mono">Authorization: Bearer …</code>.
-          Rotate keys by editing <code className="px-1.5 py-0.5 rounded bg-muted text-[12px] font-mono">deploy/.env</code> and restarting the web container.
+          Generate and revoke keys under{" "}
+          <a href="/settings" className="text-primary/90 hover:text-primary underline decoration-dotted">
+            Settings
+          </a>
+          . Full OpenAPI 3.1 spec available at{" "}
+          <a
+            href="/api/openapi.json"
+            className="text-primary/90 hover:text-primary underline decoration-dotted font-mono text-[12px]"
+          >
+            /api/openapi.json
+          </a>
+          .
         </p>
       </header>
       <ApiExplorer />
