@@ -10,6 +10,16 @@ import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 
 const REPO_ROOT =
   process.env.PIPELINE_HOST_REPO_ROOT ?? join(process.cwd(), "..", "..");
 
+// Container-side path where the projects/ directory is mounted. This is
+// what THIS (web) process writes run logs under. Usually /app/projects in
+// production, ../../projects in dev.
+const REPO_ROOT_CONTAINER_PATH = (() => {
+  if (process.env.PROJECTS_DIR) return process.env.PROJECTS_DIR;
+  const cwdProjects = join(process.cwd(), "projects");
+  if (existsSync(cwdProjects)) return cwdProjects;
+  return join(process.cwd(), "..", "..", "projects");
+})();
+
 // Compose network name pipeline containers attach to so they can reach
 // searxng by service name. In dev that's searxng_default (from searxng repo);
 // in production it's the deploy compose network (usually deploy_default).
@@ -104,12 +114,45 @@ export function startRun(topic: string, constraints?: string): { runId: string; 
     exitCode: null,
   };
 
+  // Persist run metadata + events to disk so history survives restart.
+  // Directory: projects/<slug>/runs/<runId>.{meta.json,jsonl}
+  const runsDir = join(REPO_ROOT_CONTAINER_PATH, slug, "runs");
+  try {
+    mkdirSync(runsDir, { recursive: true });
+  } catch {}
+  const metaPath = join(runsDir, `${runId}.meta.json`);
+  const jsonlPath = join(runsDir, `${runId}.jsonl`);
+  const writeMeta = () => {
+    try {
+      writeFileSync(
+        metaPath,
+        JSON.stringify(
+          {
+            id: runId,
+            topic,
+            slug,
+            status: run.status,
+            startedAt: run.startedAt,
+            endedAt: run.status !== "running" ? Date.now() : null,
+            exitCode: run.exitCode,
+          },
+          null,
+          2
+        )
+      );
+    } catch {}
+  };
+  writeMeta();
+
   const pushLine = (line: string) => {
     if (!line.trim()) return;
     const ev: RunEvent = { type: "line", line, ts: Date.now() };
     events.push(ev);
     if (events.length > 2000) events.splice(0, events.length - 2000);
     emitter.emit("event", ev);
+    try {
+      require("fs").appendFileSync(jsonlPath, JSON.stringify(ev) + "\n");
+    } catch {}
   };
 
   const handleChunk = (buf: Buffer) => {
@@ -126,6 +169,10 @@ export function startRun(topic: string, constraints?: string): { runId: string; 
     const ev: RunEvent = { type: "exit", code, ts: Date.now() };
     events.push(ev);
     emitter.emit("event", ev);
+    try {
+      require("fs").appendFileSync(jsonlPath, JSON.stringify(ev) + "\n");
+    } catch {}
+    writeMeta();
   });
 
   proc.on("error", (err) => {
@@ -153,7 +200,8 @@ export function listRuns(): {
   phase: string | null;
   lastLine: string | null;
 }[] {
-  return Array.from(runs.values())
+  // In-memory runs (current process lifetime)
+  const memRuns = Array.from(runs.values())
     .map((r) => {
       // Peek the most recent "phase:" line so consumers see current phase.
       let phase: string | null = null;
@@ -179,6 +227,41 @@ export function listRuns(): {
         phase,
         lastLine,
       };
-    })
-    .sort((a, b) => b.startedAt - a.startedAt);
+    });
+
+  // Disk-persisted runs — scan projects/*/runs/*.meta.json
+  const diskRuns: (typeof memRuns) = [];
+  try {
+    for (const slugDir of readdirSync(REPO_ROOT_CONTAINER_PATH, {
+      withFileTypes: true,
+    })) {
+      if (!slugDir.isDirectory()) continue;
+      const runsDir = join(REPO_ROOT_CONTAINER_PATH, slugDir.name, "runs");
+      if (!existsSync(runsDir)) continue;
+      for (const f of readdirSync(runsDir)) {
+        if (!f.endsWith(".meta.json")) continue;
+        try {
+          const m = JSON.parse(readFileSync(join(runsDir, f), "utf-8"));
+          const status: "running" | "completed" | "failed" =
+            m.status === "running" || m.status === "failed" ? m.status : "completed";
+          diskRuns.push({
+            id: m.id,
+            topic: m.topic ?? slugDir.name,
+            slug: m.slug ?? slugDir.name,
+            status,
+            startedAt: m.startedAt ?? 0,
+            exitCode: m.exitCode ?? null,
+            phase: null,
+            lastLine: null,
+          });
+        } catch {}
+      }
+    }
+  } catch {}
+
+  // Dedupe by runId, preferring in-memory (has phase/lastLine)
+  const byId = new Map<string, (typeof memRuns)[number]>();
+  for (const r of diskRuns) byId.set(r.id, r);
+  for (const r of memRuns) byId.set(r.id, r);
+  return Array.from(byId.values()).sort((a, b) => b.startedAt - a.startedAt);
 }
