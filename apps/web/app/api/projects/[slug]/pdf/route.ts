@@ -19,15 +19,39 @@ export async function GET(
     return new Response("Project not found", { status: 404 });
   }
 
-  const origin = new URL(request.url).origin;
+  // When the pipeline is behind BASIC_AUTH, the print page we're about
+  // to screenshot lives behind the same gate. Hit localhost (bypasses
+  // reverse-proxy if any) and forward the Authorization header so the
+  // middleware lets the internal chromium request through.
+  const origin = `http://127.0.0.1:${process.env.PORT ?? 3000}`;
   const printUrl = `${origin}/projects/${slug}/print`;
+  const authHeader = request.headers.get("authorization");
+  const pass = process.env.BASIC_AUTH_PASS;
+  const user = process.env.BASIC_AUTH_USER ?? "research";
 
   let browser;
   try {
     browser = await chromium.launch({
       args: ["--no-sandbox", "--disable-dev-shm-usage"],
+      // In production containers we install system chromium via apk instead
+      // of downloading Playwright's bundled build. Fall back to Playwright's
+      // default when this env is unset (dev).
+      executablePath:
+        process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
     });
-    const page = await browser.newPage();
+    const context = await browser.newContext({
+      // Forward the caller's Authorization if present, otherwise synthesize
+      // one from the server-side env (for cron-style re-generation).
+      extraHTTPHeaders:
+        authHeader || pass
+          ? {
+              authorization:
+                authHeader ??
+                "Basic " + Buffer.from(`${user}:${pass}`).toString("base64"),
+            }
+          : {},
+    });
+    const page = await context.newPage();
     await page.emulateMedia({ media: "print" });
     await page.goto(printUrl, { waitUntil: "networkidle", timeout: 30000 });
 
