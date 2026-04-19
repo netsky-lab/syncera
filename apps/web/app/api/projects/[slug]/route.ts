@@ -3,7 +3,9 @@
 //   ?raw=1                                                    (return raw JSON not wrapped response)
 
 import { getProject } from "@/lib/projects";
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, requireBasicAuth } from "@/lib/auth";
+import { rmSync, existsSync } from "fs";
+import { join } from "path";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -49,4 +51,36 @@ export async function GET(
   }
 
   return Response.json(body);
+}
+
+// Admin-only: hard-delete a project directory.
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ slug: string }> }
+) {
+  const auth = requireBasicAuth(request);
+  if (!auth.ok) return auth.response;
+  const { slug } = await params;
+
+  // Resolve projects dir same way lib/projects does
+  const PROJECTS_DIR = (() => {
+    if (process.env.PROJECTS_DIR) return process.env.PROJECTS_DIR;
+    const cwdProjects = join(process.cwd(), "projects");
+    if (existsSync(cwdProjects)) return cwdProjects;
+    return join(process.cwd(), "..", "..", "projects");
+  })();
+
+  const projectDir = join(PROJECTS_DIR, slug);
+  if (!existsSync(join(projectDir, "plan.json"))) {
+    return Response.json({ error: "Project not found" }, { status: 404 });
+  }
+  try {
+    rmSync(projectDir, { recursive: true, force: true });
+    return Response.json({ ok: true, deleted: slug });
+  } catch (err: any) {
+    return Response.json(
+      { error: `Delete failed: ${err.message}` },
+      { status: 500 }
+    );
+  }
 }

@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Markdown } from "@/components/markdown";
 import { SourcesList } from "@/components/sources-list";
 import { ProjectDocument } from "@/components/project-document";
+import { ProjectAdminActions } from "@/components/project-admin-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -197,6 +198,7 @@ export default async function ProjectPage({
                 </svg>
                 PDF
               </a>
+              <ProjectAdminActions slug={slug} />
             </div>
           </div>
         </div>
