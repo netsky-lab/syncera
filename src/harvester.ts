@@ -459,6 +459,81 @@ async function deepResearch(opts: {
     }
   }
 
+  // 4.5 — Citation snowball: scan collected content for cited arxiv paper
+  // IDs (references section, "et al." citations, inline [N] markers). Add
+  // new papers as additional sources and run extractLearnings on them.
+  // Disabled by setting SNOWBALL_MAX_PAPERS=0.
+  const snowballMax = Number(process.env.SNOWBALL_MAX_PAPERS ?? 8);
+  if (snowballMax > 0 && allSources.length > 0) {
+    const seen = new Set(allSources.map((s) => normalizeUrl(s.url)));
+    // Collect arxiv IDs cited anywhere in the first 25 kB of each primary-tier
+    // source's scraped content. Keep the top N that aren't already visited.
+    const cited = new Map<string, number>(); // arxivId -> count (popularity)
+    for (const src of allSources.slice(0, 15)) {
+      if (scoreSource(src.url) > 1) continue; // primary tier only
+      const content = src.raw_content ?? "";
+      const scope = content.slice(0, 25000);
+      const arxivIds = scope.match(/\b\d{4}\.\d{4,5}(?:v\d+)?\b/g) ?? [];
+      for (const id of arxivIds) {
+        const canonical = id.replace(/v\d+$/, "");
+        const key = `arxiv:${canonical}`;
+        if (seen.has(key) || globalVisited.has(key)) continue;
+        cited.set(canonical, (cited.get(canonical) ?? 0) + 1);
+      }
+    }
+    const newIds = Array.from(cited.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, snowballMax)
+      .map(([id]) => id);
+    if (newIds.length > 0) {
+      console.log(`[snowball] ${newIds.length} new arxiv papers cited by primary sources`);
+      const snowballUrls = newIds.map((id) => `https://arxiv.org/html/${id}v1`);
+      const reads = await readUrls(snowballUrls, readConcurrency, 30000);
+      const snowballSources: SearchResult[] = [];
+      const snowballContents: string[] = [];
+      for (let i = 0; i < newIds.length; i++) {
+        const read = reads[i];
+        if (!read?.success || read.content.length < 200) continue;
+        const src: SearchResult = {
+          title: `arXiv:${newIds[i]}`,
+          url: snowballUrls[i]!,
+          snippet: read.content.slice(0, 300),
+          provider: "arxiv:snowball",
+          query: "[citation snowball]",
+          raw_content: read.content.slice(0, 8000),
+        };
+        globalVisited.add(`arxiv:${newIds[i]}`);
+        snowballSources.push(src);
+        snowballContents.push(read.content.slice(0, 15000));
+        // Persist content to disk like the main loop does
+        const hash = hashUrl(src.url);
+        writeFileSync(
+          join(contentDir, `${hash}.md`),
+          `# ${src.title}\n\nURL: ${src.url}\n\n---\n\n${read.content}`
+        );
+      }
+      allSources.push(...snowballSources);
+      console.log(
+        `[snowball]   fetched ${snowballSources.length}/${newIds.length} snowballed papers`
+      );
+      if (snowballContents.length > 0) {
+        try {
+          const extracted = await extractLearnings({
+            query: "citations snowballed from primary sources",
+            researchGoal: opts.taskGoal,
+            contents: snowballContents,
+            numLearnings: 8,
+            numFollowUps: 0,
+          });
+          allLearnings.push(...extracted.learnings);
+          console.log(`[snowball]   +${extracted.learnings.length} learnings from snowball`);
+        } catch (err: any) {
+          console.warn(`[snowball]   learnings failed: ${err.message?.slice(0, 80)}`);
+        }
+      }
+    }
+  }
+
   // 5. Recurse deeper if depth > 0
   if (depth > 1 && followUpQuestions.length > 0) {
     const newBreadth = Math.max(1, Math.ceil(breadth / 2));
