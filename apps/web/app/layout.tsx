@@ -44,7 +44,14 @@ export default function RootLayout({
             </div>
             <div className="font-semibold text-sm tracking-tight">Research Lab</div>
           </Link>
-          <span className="text-[10px] text-muted-foreground font-mono">v0.2</span>
+          <nav className="flex items-center gap-3 text-xs">
+            <Link href="/" className="text-muted-foreground hover:text-foreground transition-colors">
+              Projects
+            </Link>
+            <Link href="/docs" className="text-muted-foreground hover:text-foreground transition-colors">
+              API
+            </Link>
+          </nav>
         </header>
 
         <div className="flex md:min-h-screen">
@@ -84,6 +91,25 @@ export default function RootLayout({
                   />
                 </svg>
                 Projects
+              </Link>
+              <Link
+                href="/docs"
+                className="flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-accent transition-colors"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16 18l6-6-6-6M8 6l-6 6 6 6"
+                  />
+                </svg>
+                API
               </Link>
             </nav>
             <div className="px-5 py-3 border-t text-[10px] text-muted-foreground font-mono">
