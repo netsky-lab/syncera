@@ -42,6 +42,9 @@ services:
     environment:
       BASIC_AUTH_USER: ${BASIC_AUTH_USER:-research}
       BASIC_AUTH_PASS: ${BASIC_AUTH_PASS:?BASIC_AUTH_PASS must be set in .env}
+      # Comma-separated list of accepted API keys for /api/* endpoints.
+      # If unset, API routes require Basic Auth.
+      API_KEYS: ${API_KEYS:-}
       NODE_ENV: production
       # LLM endpoint + search used when the web UI spawns a pipeline run.
       # Override via deploy/.env.
