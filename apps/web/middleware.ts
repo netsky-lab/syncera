@@ -150,22 +150,25 @@ export async function middleware(req: NextRequest) {
     return r;
   }
 
-  // Non-API pages — require a valid session cookie. Basic Auth still
-  // accepted for backward compat (admin bootstrap via env).
+  // Non-API pages — require a valid session cookie. Basic Auth is NOT
+  // accepted on browser pages once SESSION_SECRET is configured;
+  // operators sign in through /login like everyone else.
   const sessionCookie = req.cookies.get(SESSION_COOKIE)?.value;
   if (await verifySessionToken(sessionCookie)) {
     return NextResponse.next();
   }
 
-  const pass = process.env.BASIC_AUTH_PASS;
-  if (pass) {
+  // Legacy fallback: ONLY if SESSION_SECRET is unset (pre-migration
+  // deployment without real auth). Keeps old basic-auth-only
+  // installs working but doesn't let a stale BASIC_AUTH_PASS bypass
+  // the new cookie gate on a properly-configured install.
+  if (!process.env.SESSION_SECRET && process.env.BASIC_AUTH_PASS) {
     const header = req.headers.get("authorization");
     const user = process.env.BASIC_AUTH_USER ?? "research";
-    const expected = "Basic " + btoa(`${user}:${pass}`);
+    const expected = "Basic " + btoa(`${user}:${process.env.BASIC_AUTH_PASS}`);
     if (header === expected) return NextResponse.next();
   }
 
-  // If both fail, redirect to /login (or signup if no users yet).
   const loginUrl = new URL("/login", req.url);
   loginUrl.searchParams.set("next", pathname);
   return NextResponse.redirect(loginUrl);

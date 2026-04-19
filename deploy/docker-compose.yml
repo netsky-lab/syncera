@@ -52,6 +52,10 @@ services:
       # Session cookie signing secret. MUST be set in production — 32+ chars.
       # Generate with: openssl rand -hex 32
       SESSION_SECRET: ${SESSION_SECRET:-}
+      # Paths for file-backed stores. Absolute so cwd differences
+      # (standalone server.js runs from /app/apps/web) don't matter.
+      USER_STORE_PATH: /app/data/users.json
+      KEY_STORE_PATH: /app/data/api_keys.json
       # Bootstrap admin user on first start (seeded to users.json).
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}

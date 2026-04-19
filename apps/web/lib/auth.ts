@@ -47,20 +47,45 @@ export function requireAuth(request: Request): { ok: true } | { ok: false; respo
   };
 }
 
-// Admin endpoints want Basic Auth only. API key cannot mint more keys.
+// Admin endpoints require an admin-role session cookie (or Basic Auth as
+// pre-migration fallback). API keys cannot mint more keys.
 export function requireBasicAuth(request: Request): { ok: true } | { ok: false; response: Response } {
+  // Session cookie with admin role
+  const cookie = request.headers.get("cookie") ?? "";
+  const { COOKIE_NAME, verifySession } = require("@/lib/sessions");
+  const { findUserById } = require("@/lib/users");
+  const match = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
+  const session = verifySession(match?.[1]);
+  if (session) {
+    const user = findUserById(session.uid);
+    if (user?.role === "admin") return { ok: true };
+    if (user) {
+      return {
+        ok: false,
+        response: Response.json(
+          { error: "Admin role required" },
+          { status: 403 }
+        ),
+      };
+    }
+  }
+
+  // Legacy basic auth — still accepted so env-admin can work before any
+  // user accounts exist.
   const basicPass = process.env.BASIC_AUTH_PASS;
-  if (!basicPass) return { ok: true }; // auth disabled in dev
-  const authHeader = request.headers.get("authorization");
-  if (authHeader?.startsWith("Basic ")) {
-    const user = process.env.BASIC_AUTH_USER ?? "research";
-    const expected = "Basic " + Buffer.from(`${user}:${basicPass}`).toString("base64");
-    if (authHeader === expected) return { ok: true };
+  if (!basicPass && !process.env.SESSION_SECRET) return { ok: true };
+  if (basicPass) {
+    const authHeader = request.headers.get("authorization");
+    if (authHeader?.startsWith("Basic ")) {
+      const user = process.env.BASIC_AUTH_USER ?? "research";
+      const expected = "Basic " + Buffer.from(`${user}:${basicPass}`).toString("base64");
+      if (authHeader === expected) return { ok: true };
+    }
   }
   return {
     ok: false,
     response: Response.json(
-      { error: "Admin endpoints require Basic Auth (not API key)" },
+      { error: "Admin authentication required — sign in with an admin account" },
       { status: 401 }
     ),
   };
