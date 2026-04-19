@@ -11,7 +11,44 @@ import type { NextRequest } from "next/server";
 // lib/auth.ts#requireAuth(), because Edge middleware can't read our
 // file-backed key store.
 
-const EXCLUDED_PREFIXES = ["/_next/", "/favicon", "/api/health"];
+const EXCLUDED_PREFIXES = [
+  "/_next/",
+  "/favicon",
+  "/api/health",
+  "/api/auth/", // login/signup/me/logout — must be reachable pre-auth
+  "/login",
+  "/signup",
+];
+
+const SESSION_COOKIE = "rl_session";
+
+async function verifySessionToken(token: string | null | undefined): Promise<boolean> {
+  if (!token || !token.includes(".")) return false;
+  const [encoded, sig] = token.split(".");
+  if (!encoded || !sig) return false;
+  try {
+    const s = process.env.SESSION_SECRET ?? process.env.BASIC_AUTH_PASS ?? "dev-insecure-fallback-change-me";
+    const keyMaterial = new TextEncoder().encode(s.padEnd(32, "x"));
+    const key = await crypto.subtle.importKey(
+      "raw",
+      keyMaterial,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const expected = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(encoded));
+    const expectedB64 = Buffer.from(expected).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    if (expectedB64 !== sig) return false;
+    // Decode payload to check expiry
+    const pad = "===".slice((encoded.length + 3) % 4);
+    const json = atob(encoded.replace(/-/g, "+").replace(/_/g, "/") + pad);
+    const payload = JSON.parse(json);
+    if (!payload?.exp || payload.exp < Math.floor(Date.now() / 1000)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function corsHeaders(origin: string | null): Record<string, string> {
   const allowed = (process.env.API_CORS_ORIGINS ?? "*")
@@ -70,7 +107,7 @@ function identityForRateLimit(req: NextRequest): string {
   return `ip:${ip.split(",")[0]!.trim()}`;
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   for (const p of EXCLUDED_PREFIXES) {
     if (pathname.startsWith(p)) return NextResponse.next();
@@ -113,20 +150,25 @@ export function middleware(req: NextRequest) {
     return r;
   }
 
-  // Non-API pages — Basic Auth gate when configured
-  const pass = process.env.BASIC_AUTH_PASS;
-  if (!pass) return NextResponse.next();
-  const header = req.headers.get("authorization");
-  const user = process.env.BASIC_AUTH_USER ?? "research";
-  const expected = "Basic " + btoa(`${user}:${pass}`);
-  if (header === expected) return NextResponse.next();
+  // Non-API pages — require a valid session cookie. Basic Auth still
+  // accepted for backward compat (admin bootstrap via env).
+  const sessionCookie = req.cookies.get(SESSION_COOKIE)?.value;
+  if (await verifySessionToken(sessionCookie)) {
+    return NextResponse.next();
+  }
 
-  return new NextResponse("Authentication required", {
-    status: 401,
-    headers: {
-      "WWW-Authenticate": `Basic realm="Research Lab", charset="UTF-8"`,
-    },
-  });
+  const pass = process.env.BASIC_AUTH_PASS;
+  if (pass) {
+    const header = req.headers.get("authorization");
+    const user = process.env.BASIC_AUTH_USER ?? "research";
+    const expected = "Basic " + btoa(`${user}:${pass}`);
+    if (header === expected) return NextResponse.next();
+  }
+
+  // If both fail, redirect to /login (or signup if no users yet).
+  const loginUrl = new URL("/login", req.url);
+  loginUrl.searchParams.set("next", pathname);
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {

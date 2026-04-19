@@ -49,6 +49,14 @@ services:
       API_CORS_ORIGINS: ${API_CORS_ORIGINS:-*}
       # Requests per minute per identity (API key or basic-auth).
       API_RATE_LIMIT_PER_MIN: ${API_RATE_LIMIT_PER_MIN:-60}
+      # Session cookie signing secret. MUST be set in production — 32+ chars.
+      # Generate with: openssl rand -hex 32
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      # Bootstrap admin user on first start (seeded to users.json).
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Open signup (default: first user becomes admin, rest require invite).
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-0}
       NODE_ENV: production
       # LLM endpoint + search used when the web UI spawns a pipeline run.
       # Override via deploy/.env.

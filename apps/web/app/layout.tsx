@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 import "highlight.js/styles/github-dark.css";
+import { UserChip } from "@/components/user-chip";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -131,6 +132,7 @@ export default function RootLayout({
                 Settings
               </Link>
             </nav>
+            <UserChip />
             <div className="px-5 py-3 border-t text-[10px] text-muted-foreground font-mono">
               v0.2.0 · engine
             </div>
