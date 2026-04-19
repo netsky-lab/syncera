@@ -620,11 +620,34 @@ async function extractLearnings(args: {
 
 function normalizeUrl(url: string): string {
   if (!url) return "";
-  return url
+  let s = url
     .toLowerCase()
     .replace(/^https?:\/\/(www\.)?/, "")
     .replace(/[#?].*$/, "")
     .replace(/\/+$/, "");
+
+  // Arxiv paper ID canonicalization: abs/X, html/X, html/Xv2, pdf/X,
+  // pdf/X.pdf all point to the same paper. Canonical key = "arxiv:<id>"
+  // without version suffix. Also normalizes export.arxiv.org -> arxiv.org.
+  const arxivMatch = s.match(
+    /^(?:export\.)?arxiv\.org\/(?:abs|html|pdf)\/(\d{4}\.\d{4,5})(?:v\d+)?(?:\.pdf)?(?:\/.*)?$/
+  );
+  if (arxivMatch) return `arxiv:${arxivMatch[1]}`;
+
+  // OpenReview dedup: forum?id=X, pdf?id=X, pdf/X — all same paper.
+  // NOTE: query stripping above already removed ?id=... so only pathnames remain.
+  const orMatch = s.match(/^openreview\.net\/(?:forum|pdf|attachment)\/([a-z0-9_-]+)/i);
+  if (orMatch) return `openreview:${orMatch[1].toLowerCase()}`;
+
+  // Semantic Scholar paper IDs.
+  const s2Match = s.match(/^(?:www\.)?semanticscholar\.org\/paper\/[^\/]*\/?([a-f0-9]{8,})/);
+  if (s2Match) return `s2:${s2Match[1]}`;
+
+  // OpenAlex work IDs.
+  const oaMatch = s.match(/^(?:api\.)?openalex\.org\/works\/(w\d+)/i);
+  if (oaMatch) return `openalex:${oaMatch[1].toLowerCase()}`;
+
+  return s;
 }
 
 function hashUrl(url: string): string {
