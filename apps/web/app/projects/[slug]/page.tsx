@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Markdown } from "@/components/markdown";
 import { SourcesList } from "@/components/sources-list";
+import { ProjectDocument } from "@/components/project-document";
 
 export const dynamic = "force-dynamic";
 
@@ -117,6 +118,53 @@ export default async function ProjectPage({
   const totalLearnings = sources?.total_learnings ?? 0;
   const byProvider: Record<string, number> = sources?.by_provider ?? {};
   const isQuestionFirst = schema === "question_first";
+
+  // Question-first reading-mode layout (Perplexity-style document view).
+  // Legacy hypothesis-first keeps the old tabs layout below.
+  if (isQuestionFirst) {
+    return (
+      <div className="min-h-screen">
+        {/* Minimal top bar */}
+        <div className="border-b border-border/50 bg-background/80 backdrop-blur-sm sticky top-0 z-10">
+          <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
+            <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 shrink-0">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Projects
+            </Link>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-[15px] font-semibold tracking-tight leading-snug truncate">
+                {plan.topic}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Badge variant="outline" className="text-[10px] bg-sky-500/10 text-sky-300 border-sky-500/30">
+                question-first
+              </Badge>
+              <span className="text-[11px] text-muted-foreground font-mono">
+                {questions.length}Q · {facts.length}F · {totalSources}S
+              </span>
+              <a
+                href={`/api/projects/${slug}/pdf`}
+                className="text-xs px-3 py-1.5 rounded-md border hover:bg-accent transition-colors inline-flex items-center gap-1.5"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" strokeLinecap="round" strokeLinejoin="round" />
+                  <polyline points="7 10 12 15 17 10" strokeLinecap="round" strokeLinejoin="round" />
+                  <line x1="12" y1="15" x2="12" y2="3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                PDF
+              </a>
+            </div>
+          </div>
+        </div>
+        <ProjectDocument project={project} />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-8 py-8 space-y-6">
