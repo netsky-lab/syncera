@@ -598,7 +598,7 @@ async function generateQueries(args: {
   return object.queries.slice(0, numQueries);
 }
 
-async function extractLearnings(args: {
+export async function extractLearnings(args: {
   query: string;
   researchGoal: string;
   contents: string[];

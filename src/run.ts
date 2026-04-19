@@ -1,6 +1,7 @@
 import { makePlan } from "./planner";
 import { scout } from "./scout";
 import type { ScoutDigest } from "./scout";
+import { refine } from "./refine";
 import { harvest } from "./harvester";
 import { extractEvidence } from "./evidence";
 import { verifyAll } from "./verifier";
@@ -151,6 +152,34 @@ async function main() {
   console.log(
     `[phase:synth] Done in ${((Date.now() - t4) / 1000).toFixed(1)}s\n`
   );
+
+  // --- Phase 6: Refinement (optional, --refine) ---
+  // Iterative gap-filling: if some questions came back insufficient/gaps_critical,
+  // run targeted re-harvest + re-extract + re-verify + re-analyze + re-synth
+  // to close specific holes. Off by default (adds 20-40 min).
+  if (process.argv.includes("--refine")) {
+    console.log("[phase:refine] Targeting weak questions...");
+    const tr = Date.now();
+    const result = await refine(plan, projectDir);
+    console.log(
+      `[phase:refine] Done in ${((Date.now() - tr) / 1000).toFixed(1)}s — refined ${result.questionsRefined.length} questions, +${result.additionalFacts} learnings\n`
+    );
+
+    if (result.additionalFacts > 0) {
+      console.log("[phase:evidence→verify→analyze→synth] Re-running downstream with new learnings...");
+      const t5 = Date.now();
+      const facts2 = await extractEvidence(plan, projectDir);
+      const factsForVerify: Fact[] = JSON.parse(
+        readFileSync(factsPath, "utf-8")
+      );
+      await verifyAll({ facts: factsForVerify, projectDir, concurrency: 5 });
+      await analyze(plan, projectDir);
+      await synthesize(plan, projectDir);
+      console.log(
+        `[phase:refine-downstream] Done in ${((Date.now() - t5) / 1000).toFixed(1)}s — facts now: ${facts2.length}\n`
+      );
+    }
+  }
 
   // --- Update README ---
   const facts: Fact[] = JSON.parse(readFileSync(factsPath, "utf-8"));
