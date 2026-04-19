@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -21,7 +21,13 @@ type Project = {
   verification: any;
 };
 
-function FactCitations({ text }: { text: string }) {
+function FactCitations({
+  text,
+  factMap,
+}: {
+  text: string;
+  factMap?: Map<string, any>;
+}) {
   // Split text into runs, wrap [F#] tokens with scroll-to-fact anchors.
   const parts = text.split(/(\[F\d+(?:,\s*F\d+)*\])/g);
   return (
@@ -32,31 +38,120 @@ function FactCitations({ text }: { text: string }) {
         const ids = match[1]!.split(/,\s*/);
         return (
           <span key={i} className="inline-flex gap-0.5 align-baseline">
-            {ids.map((id, j) => (
-              <a
-                key={j}
-                href={`#${id}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  const el = document.getElementById(id);
-                  if (el) {
-                    el.scrollIntoView({ behavior: "smooth", block: "center" });
-                    el.classList.add("ring-2", "ring-primary/60", "ring-offset-2", "ring-offset-background");
-                    setTimeout(
-                      () => el.classList.remove("ring-2", "ring-primary/60", "ring-offset-2", "ring-offset-background"),
-                      1600
-                    );
+            {ids.map((id, j) => {
+              const fact = factMap?.get(id);
+              return (
+                <a
+                  key={j}
+                  href={`#${id}`}
+                  title={
+                    fact
+                      ? `${fact.statement.slice(0, 220)}${
+                          fact.statement.length > 220 ? "…" : ""
+                        }`
+                      : id
                   }
-                }}
-                className="inline-flex items-center px-1.5 h-[1.5em] text-[11px] font-mono rounded border border-primary/30 text-primary/90 bg-primary/5 hover:bg-primary/15 hover:border-primary/60 transition-colors no-underline"
-              >
-                {id}
-              </a>
-            ))}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const el = document.getElementById(id);
+                    if (el) {
+                      el.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                      });
+                      el.classList.add(
+                        "ring-2",
+                        "ring-primary/60",
+                        "ring-offset-2",
+                        "ring-offset-background"
+                      );
+                      setTimeout(
+                        () =>
+                          el.classList.remove(
+                            "ring-2",
+                            "ring-primary/60",
+                            "ring-offset-2",
+                            "ring-offset-background"
+                          ),
+                        1600
+                      );
+                    }
+                  }}
+                  className="inline-flex items-center px-1.5 h-[1.5em] text-[11px] font-mono rounded border border-primary/30 text-primary/90 bg-primary/5 hover:bg-primary/15 hover:border-primary/60 transition-colors no-underline cursor-help"
+                >
+                  {id}
+                </a>
+              );
+            })}
           </span>
         );
       })}
     </>
+  );
+}
+
+// Scroll-spy: watch section elements and return the id of the topmost
+// visible section. Used by TOC to highlight current reading position.
+function useActiveSection(ids: string[]): string | null {
+  const [active, setActive] = useState<string | null>(null);
+  useEffect(() => {
+    if (ids.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort(
+            (a, b) =>
+              a.target.getBoundingClientRect().top -
+              b.target.getBoundingClientRect().top
+          );
+        if (visible.length > 0) {
+          setActive(visible[0]!.target.id);
+        }
+      },
+      {
+        rootMargin: "-80px 0px -60% 0px",
+        threshold: [0, 0.25, 0.5, 0.75, 1],
+      }
+    );
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [ids.join(",")]);
+  return active;
+}
+
+function JumpToTop() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 600);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  if (!visible) return null;
+  return (
+    <button
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      aria-label="Jump to top"
+      className="fixed bottom-6 right-6 z-20 p-2.5 rounded-full border border-border/60 bg-background/90 backdrop-blur-sm shadow-lg hover:border-primary/60 hover:bg-primary/10 transition-all"
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M5 15l7-7 7 7"
+        />
+      </svg>
+    </button>
   );
 }
 
@@ -110,11 +205,13 @@ function QuestionSection({
   answer,
   facts,
   verMap,
+  factMap,
 }: {
   q: any;
   answer: any;
   facts: any[];
   verMap: Map<string, any>;
+  factMap: Map<string, any>;
 }) {
   const [showAllFacts, setShowAllFacts] = useState(false);
   const questionFacts = facts.filter((f) => f.question_id === q.id);
@@ -159,7 +256,7 @@ function QuestionSection({
       {answer?.answer && (
         <div className="prose-reader mb-6">
           <p className="text-[15px] leading-[1.75] text-foreground/90 whitespace-pre-wrap">
-            <FactCitations text={answer.answer} />
+            <FactCitations text={answer.answer} factMap={factMap} />
           </p>
         </div>
       )}
@@ -171,7 +268,7 @@ function QuestionSection({
           </div>
           {answer.conflicting_facts.map((cf: any, i: number) => (
             <div key={i} className="text-[13px] leading-relaxed">
-              <FactCitations text={`[${cf.fact_a}] vs [${cf.fact_b}] — ${cf.nature}`} />
+              <FactCitations text={`[${cf.fact_a}] vs [${cf.fact_b}] — ${cf.nature}`} factMap={factMap} />
             </div>
           ))}
         </div>
@@ -334,6 +431,24 @@ export function ProjectDocument({
     referenceUrls.push({ id: f.id, title: r.title || r.url, url: r.url });
   }
 
+  // Facts lookup by id for hover-preview tooltips on citation chips.
+  const factMap = useMemo(
+    () => new Map<string, any>(facts.map((f) => [f.id, f])),
+    [facts]
+  );
+
+  // TOC section ids for scroll-spy
+  const tocIds: string[] = [
+    ...(analysisReport?.overall_summary ? ["summary"] : []),
+    ...(tensions.length > 0 ? ["tensions"] : []),
+    ...questions.map((q: any) => q.id),
+    ...(comparisonTable ? ["comparison"] : []),
+    ...(deployment ? ["deployment"] : []),
+    ...(recommendation ? ["recommendation"] : []),
+    ...(referenceUrls.length > 0 ? ["references"] : []),
+  ];
+  const activeSection = useActiveSection(tocIds);
+
   return (
     <div className="mx-auto max-w-7xl px-6 py-8 grid lg:grid-cols-[1fr_15rem] gap-12">
       <article className="max-w-[70ch] min-w-0">
@@ -352,7 +467,7 @@ export function ProjectDocument({
               Summary
             </h2>
             <p className="text-[15px] leading-[1.75] text-foreground/90">
-              <FactCitations text={analysisReport.overall_summary} />
+              <FactCitations text={analysisReport.overall_summary} factMap={factMap} />
             </p>
           </section>
         )}
@@ -384,7 +499,7 @@ export function ProjectDocument({
                     ))}
                   </div>
                   <div>
-                    <FactCitations text={t.description} />
+                    <FactCitations text={t.description} factMap={factMap} />
                   </div>
                 </div>
               ))}
@@ -399,6 +514,7 @@ export function ProjectDocument({
             answer={answerFor(q.id)}
             facts={facts}
             verMap={verMap}
+            factMap={factMap}
           />
         ))}
 
@@ -435,7 +551,7 @@ export function ProjectDocument({
                         {i + 1}.
                       </span>
                       <div className="flex-1">
-                        <FactCitations text={text} />
+                        <FactCitations text={text} factMap={factMap} />
                       </div>
                     </li>
                   );
@@ -451,7 +567,7 @@ export function ProjectDocument({
             </h2>
             <div className="p-4 rounded-md border border-primary/30 bg-primary/5">
               <p className="text-[15px] leading-[1.75] text-foreground/90">
-                <FactCitations text={recommendation} />
+                <FactCitations text={recommendation} factMap={factMap} />
               </p>
             </div>
           </section>
@@ -485,67 +601,107 @@ export function ProjectDocument({
 
       {/* TOC sidebar */}
       <aside className="hidden lg:block">
-        <nav className="sticky top-8 space-y-1 text-[12px]">
-          <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-2">
+        <nav className="sticky top-20 space-y-0.5 text-[12px]">
+          <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-3 pl-2">
             On this page
           </div>
-          <a href="#summary" className="block px-2 py-1 rounded text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors">
-            Summary
-          </a>
+          {analysisReport?.overall_summary && (
+            <TocItem id="summary" activeId={activeSection} label="Summary" />
+          )}
           {tensions.length > 0 && (
-            <a href="#tensions" className="block px-2 py-1 rounded text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors">
-              Tensions <span className="text-[10px]">({tensions.length})</span>
-            </a>
+            <TocItem
+              id="tensions"
+              activeId={activeSection}
+              label={`Tensions (${tensions.length})`}
+            />
           )}
           {questions.map((q) => {
             const a = answerFor(q.id);
             return (
-              <a
+              <TocItem
                 key={q.id}
-                href={`#${q.id}`}
-                className="block px-2 py-1 rounded text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
-              >
-                <span className="font-mono text-[11px]">{q.id}</span>{" "}
-                <span className="text-[10px] uppercase tracking-wide">{q.category}</span>
-                {a && (
-                  <span
-                    className={`inline-block w-1.5 h-1.5 rounded-full ml-1.5 ${
-                      a.coverage === "complete"
-                        ? "bg-emerald-400"
-                        : a.coverage === "partial"
-                          ? "bg-amber-400"
-                          : a.coverage === "gaps_critical"
-                            ? "bg-orange-400"
-                            : "bg-red-400"
-                    }`}
-                  />
-                )}
-              </a>
+                id={q.id}
+                activeId={activeSection}
+                label={
+                  <span className="flex items-center gap-1.5">
+                    <span className="font-mono text-[11px]">{q.id}</span>
+                    <span className="text-[10px] uppercase tracking-wide opacity-70">
+                      {q.category}
+                    </span>
+                    {a && (
+                      <span
+                        className={`inline-block w-1.5 h-1.5 rounded-full ml-auto ${
+                          a.coverage === "complete"
+                            ? "bg-emerald-400"
+                            : a.coverage === "partial"
+                              ? "bg-amber-400"
+                              : a.coverage === "gaps_critical"
+                                ? "bg-orange-400"
+                                : "bg-red-400"
+                        }`}
+                      />
+                    )}
+                  </span>
+                }
+              />
             );
           })}
           {comparisonTable && (
-            <a href="#comparison" className="block px-2 py-1 rounded text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors">
-              Method comparison
-            </a>
+            <TocItem
+              id="comparison"
+              activeId={activeSection}
+              label="Method comparison"
+            />
           )}
           {deployment && (
-            <a href="#deployment" className="block px-2 py-1 rounded text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors">
-              Deployment
-            </a>
+            <TocItem
+              id="deployment"
+              activeId={activeSection}
+              label="Deployment"
+            />
           )}
           {recommendation && (
-            <a href="#recommendation" className="block px-2 py-1 rounded text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors">
-              Recommendation
-            </a>
+            <TocItem
+              id="recommendation"
+              activeId={activeSection}
+              label="Recommendation"
+            />
           )}
           {referenceUrls.length > 0 && (
-            <a href="#references" className="block px-2 py-1 rounded text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors">
-              References <span className="text-[10px]">({referenceUrls.length})</span>
-            </a>
+            <TocItem
+              id="references"
+              activeId={activeSection}
+              label={`References (${referenceUrls.length})`}
+            />
           )}
         </nav>
       </aside>
+      <JumpToTop />
     </div>
+  );
+}
+
+function TocItem({
+  id,
+  activeId,
+  label,
+}: {
+  id: string;
+  activeId: string | null;
+  label: ReactNode;
+}) {
+  const isActive = activeId === id;
+  return (
+    <a
+      href={`#${id}`}
+      className={`block px-2 py-1.5 rounded transition-all border-l-2 ${
+        isActive
+          ? "border-primary bg-primary/5 text-foreground font-medium"
+          : "border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+      }`}
+    >
+      {label}
+    </a>
   );
 }
 
