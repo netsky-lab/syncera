@@ -6,13 +6,28 @@ import type { SourceIndex, SearchResult } from "./schemas/source";
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { scoreSource, tierLabel, sortByTier } from "./sourcing";
+import {
+  detectDomainProfile,
+  entityExamples,
+  evidenceGuidanceBlock,
+  type DomainProfile,
+} from "./domain-profile";
 import { z } from "zod";
 
 // Extract a list of distinct named entities from learnings before fact
 // extraction, then require the extractor to cover each.
-async function extractMethodPool(learnings: string[]): Promise<string[]> {
+async function extractMethodPool(
+  learnings: string[],
+  domainProfile: DomainProfile
+): Promise<string[]> {
   if (learnings.length === 0) return [];
-  const prompt = `Below are factual learnings from a research subquestion. Identify ALL distinct methods, frameworks, models, benchmarks, and datasets mentioned by name. Do NOT include generic terms ("quantization", "inference") — only NAMED entities (e.g. "TurboQuant", "Llama-3", "WikiText-103", "vLLM", "NVFP4").
+  const prompt = `Below are factual learnings from a research subquestion. Identify ALL distinct named entities that the final facts should preserve.
+
+Domain profile: ${domainProfile.label}
+Examples of valid named entities in this domain: ${entityExamples(domainProfile)}
+
+Include methods, frameworks, models, benchmarks, datasets, standards, compounds, ingredients, materials, interventions, populations, guidelines, regulations, or hardware when they are named in the learnings.
+Do NOT include generic field terms unless they are named standards or named measures.
 
 Return JSON: {"entities": ["Name1", "Name2", ...]}
 
@@ -23,7 +38,7 @@ ${learnings.map((l, i) => `L${i + 1}. ${l.slice(0, 300)}`).join("\n")}`;
     const { object } = await generateJson({
       schema: z.object({ entities: z.array(z.string()) }),
       system:
-        "You extract named technical entities from research notes. Only include proper-noun methods/models/benchmarks/datasets/frameworks. Be exhaustive — include rare and common alike.",
+        "You extract named domain entities from research notes. Be exhaustive, but exclude generic terms that are not named entities.",
       prompt,
       temperature: 0,
       maxRetries: 1,
@@ -45,7 +60,7 @@ const EVIDENCE_SYSTEM = `You are a fact extraction specialist. Convert harvester
 
 ## A fact vs a learning
 
-- A learning is a raw observation extracted from source prose ("KIVI achieves 2-bit quantization with near-zero perplexity loss on Llama-2-7B").
+- A learning is a raw observation extracted from source prose ("Method A reports outcome X under setup Y").
 - A fact is that learning formalized with: the research subquestion it informs, the source URL that attests to it, a factuality classification (quantitative/qualitative/comparative/background), and a confidence score.
 
 Crucially: facts are NOT tagged as supports/contradicts. This pipeline is QUESTION-FIRST — there is no pre-committed hypothesis to support or refute. Just report what the source says; the analyzer later surfaces tensions between facts.
@@ -53,7 +68,7 @@ Crucially: facts are NOT tagged as supports/contradicts. This pipeline is QUESTI
 ## Output requirements
 
 1. COVERAGE: Extract 15-25 facts per subquestion — one fact per DISTINCT piece of information. Do NOT merge different methods/results into a single fact.
-2. DIVERSITY: If learnings mention distinct methods (TurboQuant, KIVI, KVQuant, MiniKV, KV-Compress, CSKV, Kitty, AKVQ-VL, Coupled Quantization, PagedAttention, R-KV, Q4_K_M, AWQ, GPTQ, NVFP4, FP8, INT4, BF16), create a SEPARATE fact for EACH.
+2. DIVERSITY: If learnings mention distinct named methods, compounds, ingredients, standards, datasets, models, benchmarks, populations, materials, or interventions, create a SEPARATE fact for EACH where the learnings support it.
 3. NUMERIC PRIORITY: Every fact SHOULD contain a specific number, model name, benchmark name, or dataset name. If a learning has no specifics, rank its confidence <=0.5 and skip unless it's a named-entity anchor (background category).
 4. SOURCE ATTRIBUTION:
    - Each fact cites EXACTLY ONE source URL from the catalog.
@@ -63,10 +78,10 @@ Crucially: facts are NOT tagged as supports/contradicts. This pipeline is QUESTI
 
 ## Factuality categories
 
-- quantitative: contains a specific number (percentages, ratios, latencies, bit-widths)
-- qualitative: names a mechanism or capability without a number ("KIVI uses per-channel keys")
-- comparative: direct comparison between two methods / models ("GPTQ 8-19% faster than AWQ on RTX 5090")
-- background: framework / format / anchor mention without numbers (Q4_K_M, TensorRT-LLM, PagedAttention as context)
+- quantitative: contains a specific number (percentages, ratios, latencies, bit-widths, sample sizes, concentrations, effect sizes)
+- qualitative: names a mechanism, property, or capability without a number
+- comparative: direct comparison between two methods, products, populations, materials, models, treatments, or conditions
+- background: framework / format / standard / ingredient / dataset / anchor mention without numbers
 
 ## Confidence calibration
 
@@ -78,16 +93,22 @@ Crucially: facts are NOT tagged as supports/contradicts. This pipeline is QUESTI
 
 ## COMPARATIVE-METHOD COVERAGE (critical)
 
-Research papers compare a hero method against 3-8 baselines in tables. Extract a DISTINCT fact for EACH non-hero method the paper reports a number for — even if that method is "background". Readers need the whole landscape.
+Research papers and technical reports often compare a focal method/product/intervention against baselines, comparators, controls, or prior standards. Extract a DISTINCT fact for EACH comparator with a reported result — even if that comparator is "background". Readers need the whole landscape.
 
-Also extract BACKGROUND mentions even without numbers: if a paper names a framework (TensorRT-LLM, llama.cpp), format (Q4_K_M, Q4_0, GGUF), or well-known method (PagedAttention, FlashAttention) in its related-work or setup, include at least one fact naming that entity as factuality="background".
+Also extract BACKGROUND mentions even without numbers when they anchor the research landscape: named standards, frameworks, ingredients, datasets, cell chemistries, guidelines, or canonical methods.
 
 ## Anti-patterns
 
 - DO NOT invent facts not present in learnings.
-- DO NOT merge "INT4 works for Llama AND Gemma" if source only says it for Llama.
+- DO NOT merge "A works for X AND Y" if source only says it for X.
 - DO NOT extract without at least one fact per named entity when learnings contain them.
 - DO NOT pad confidence scores (vague = low score).
+
+## ATTRIBUTION (critical — verifier will reject misattributed facts)
+
+The source URL you pick for a fact MUST be a source that discusses that fact's primary named entity (method / model / benchmark / framework / ingredient / material / intervention / standard / population). A learning's mere presence in the subquestion batch does NOT imply every source in the catalog attests to it.
+
+Rule of thumb: scan the CATALOG TITLES. A fact about entity X should cite a source whose title or scraped content clearly discusses entity X or the exact same line of work — NOT a broad survey that happens to be in the same batch. If no catalog source clearly covers the fact's named entity, DO NOT extract that fact — a mis-attributed fact costs more than a missing one.
 
 Output JSON only matching the schema.`;
 
@@ -105,6 +126,50 @@ function loadFullContent(url: string, contentDir: string): string | null {
   const p = join(contentDir, `${hashUrl(url)}.md`);
   if (!existsSync(p)) return null;
   return readFileSync(p, "utf-8");
+}
+
+// Extract the most specific named entity from a fact statement. Matches
+// hyphenated model names ("Llama-3.1-8B"), CamelCase methods ("TurboQuant",
+// "MiKV"), and acronyms ("AWQ", "NVFP4"). Returns the longest match — longer
+// names are more specific and less likely to accidentally appear in unrelated
+// sources.
+export function extractPrimaryEntity(statement: string): string | null {
+  // Prefer method names (CamelCase, hyphenated-with-KV-or-Quant stems) over
+  // model names (Llama-X, Qwen-X) because a paper is ABOUT a method and
+  // tested ON models. Attribution check is strongest on the method.
+  const blocklist = new Set([
+    "GPU", "CPU", "LLM", "KV", "API", "JSON", "HTTP", "URL", "MoE",
+    "VRAM", "RAM", "CUDA", "HBM", "PCIE", "NVIDIA", "AMD",
+  ]);
+  const methodPats = [
+    /\b[A-Z][a-z]+[A-Z][A-Za-z0-9]*\b/g,      // CamelCase: TurboQuant, MiKV, VecInfer
+    /\b[A-Z][A-Za-z0-9]*(?:KV|Quant|Cache|Attn|Attention)[A-Za-z0-9]*\b/g, // KV-method stems
+    /\b[A-Z]{3,}[0-9]*\b/g,                    // ACRONYM: AWQ, GPTQ, NVFP4
+  ];
+  for (const pat of methodPats) {
+    const matches = (statement.match(pat) ?? []).filter((c) => !blocklist.has(c));
+    if (matches.length > 0) {
+      matches.sort((a, b) => b.length - a.length);
+      return matches[0] ?? null;
+    }
+  }
+  // Fallback: hyphenated (Llama-3.1-8B, KV-Compress) — picks model when
+  // nothing more specific is available. Allow dots inside so "Llama-3.1-8B"
+  // matches as a single entity instead of truncating to "Llama-3".
+  const hyphenated = (statement.match(/\b[A-Z][a-zA-Z0-9]+(?:[-.][A-Za-z0-9]+)+\b/g) ?? []).filter(
+    (c) => !blocklist.has(c)
+  );
+  if (hyphenated.length > 0) {
+    hyphenated.sort((a, b) => b.length - a.length);
+    return hyphenated[0] ?? null;
+  }
+  return null;
+}
+
+export function contentContainsEntity(content: string, entity: string): boolean {
+  const normEntity = entity.toLowerCase().replace(/[-\s]/g, "");
+  const normContent = content.toLowerCase().replace(/[-\s]/g, "");
+  return normContent.includes(normEntity);
 }
 
 // Find the source URL most likely to contain this learning — simple substring heuristic.
@@ -137,6 +202,8 @@ export async function extractEvidence(
   plan: ResearchPlan,
   projectDir: string
 ): Promise<Fact[]> {
+  const domainProfile = detectDomainProfile(plan.topic, plan.constraints);
+  const evidenceSystem = `${EVIDENCE_SYSTEM}\n\n${evidenceGuidanceBlock(domainProfile)}`;
   const sourcesDir = join(projectDir, "sources");
   const contentDir = join(sourcesDir, "content");
   // Subquestion cache files — the LLM picks the ID shape, so accept any
@@ -148,11 +215,12 @@ export async function extractEvidence(
     (f) => /^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)
   );
 
-  // Run subquestions in parallel with bounded concurrency.
-  // Qwen endpoint has 5 slots; verify runs after so evidence may use all 5.
-  const EVIDENCE_CONCURRENCY = 3;
+  // Run subquestions in parallel with bounded, provider-aware concurrency.
+  const EVIDENCE_CONCURRENCY = config.concurrency.evidence;
   const allFacts: Fact[] = [];
   const unitResults: Array<{ subquestionId: string; facts: Fact[] }> = [];
+  let attributionRepaired = 0;
+  let attributionUnresolved = 0;
 
   async function processUnit(file: string): Promise<void> {
     const sourceIndex: SourceIndex = JSON.parse(
@@ -167,7 +235,7 @@ export async function extractEvidence(
     }
 
     const methodPool = await Promise.race([
-      extractMethodPool(learnings),
+      extractMethodPool(learnings, domainProfile),
       new Promise<string[]>((resolve) =>
         setTimeout(() => {
           console.warn(
@@ -183,17 +251,48 @@ export async function extractEvidence(
       );
     }
 
-    const sortedResults = sortByTier(sourceIndex.results, (r) => r.url);
+    // Relevance gate filter: keep only on/partial with usefulness >= 1.
+    // If gate hasn't run (legacy projects), keep everything — verifier
+    // is still the final safety net.
+    const relevanceFiltered = sourceIndex.results.filter((r) => {
+      if (!r.relevance) return true; // gate never ran — fall through
+      return r.relevance.usefulness >= 1;
+    });
+    const skippedByRelevance =
+      sourceIndex.results.length - relevanceFiltered.length;
+
+    // Order: first by relevance usefulness (higher = better), then by
+    // source tier (primary > blog > community). Extractor takes the best
+    // first, bails on token budget.
+    const orderedResults = [...relevanceFiltered].sort((a, b) => {
+      const au = a.relevance?.usefulness ?? 1;
+      const bu = b.relevance?.usefulness ?? 1;
+      if (au !== bu) return bu - au;
+      return scoreSource(a.url) - scoreSource(b.url);
+    });
+
+    const sortedResults = orderedResults;
     const sourceCatalog = sortedResults
       .map(
-        (r, i) => `[S${i + 1}] [${tierLabel(scoreSource(r.url))}] ${r.title}\n  ${r.url}`
+        (r, i) => {
+          const tier = tierLabel(scoreSource(r.url));
+          const useful = r.relevance
+            ? `, usefulness=${r.relevance.usefulness}`
+            : "";
+          return `[S${i + 1}] [${tier}${useful}] ${r.title}\n  ${r.url}`;
+        }
       )
       .join("\n");
 
     const tierCounts: Record<string, number> = {};
-    for (const r of sourceIndex.results) {
+    for (const r of sortedResults) {
       const t = tierLabel(scoreSource(r.url));
       tierCounts[t] = (tierCounts[t] ?? 0) + 1;
+    }
+    if (skippedByRelevance > 0) {
+      console.log(
+        `[evidence] ${sourceIndex.subquestion_id}: ${skippedByRelevance} sources skipped by relevance gate`
+      );
     }
 
     const learningsBlock = learnings
@@ -242,7 +341,7 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
     try {
       const { object } = await generateJson({
         schema: FactExtractionSchema,
-        system: EVIDENCE_SYSTEM,
+        system: evidenceSystem,
         prompt,
         temperature: 0.2,
         endpoint: config.endpoints.evidence,
@@ -298,6 +397,37 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
         }
         fact.references = validRefs;
 
+        // Attribution check — if the fact names a specific entity, require
+        // that entity to appear in the cited source's scraped content. If
+        // not, search other sources in this subquestion for a match; swap
+        // URL if found, downgrade confidence otherwise. Cheaper than running
+        // the L3 verifier on every fact.
+        const entity = extractPrimaryEntity(fact.statement);
+        if (entity && fact.references[0]) {
+          const primary = fact.references[0];
+          const primaryContent = loadFullContent(primary.url, contentDir);
+          const primaryHasEntity =
+            primaryContent && contentContainsEntity(primaryContent, entity);
+          if (!primaryHasEntity) {
+            const better = sourceIndex.results.find((s) => {
+              if (s.url === primary.url) return false;
+              const c = loadFullContent(s.url, contentDir);
+              return c ? contentContainsEntity(c, entity) : false;
+            });
+            if (better) {
+              fact.references[0] = {
+                url: better.url,
+                title: better.title,
+                exact_quote: fact.statement,
+              };
+              attributionRepaired++;
+            } else {
+              fact.confidence = Math.min(fact.confidence ?? 0.5, 0.3);
+              attributionUnresolved++;
+            }
+          }
+        }
+
         unitFacts.push(fact);
       }
 
@@ -352,6 +482,11 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
   console.log(
     `[evidence] Total: ${deduped.length} unique facts (${allFacts.length - deduped.length} duplicates)`
   );
+  if (attributionRepaired > 0 || attributionUnresolved > 0) {
+    console.log(
+      `[evidence] Attribution check: repaired ${attributionRepaired}, unresolved ${attributionUnresolved} (confidence downgraded to 0.3)`
+    );
+  }
   console.log(`[evidence] Written: ${factsPath}`);
 
   return deduped;

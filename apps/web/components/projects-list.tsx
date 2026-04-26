@@ -83,17 +83,13 @@ export function ProjectsList({ projects }: { projects: Project[] }) {
   if (projects.length === 0) {
     return (
       <Card className="border-dashed">
-        <CardContent className="py-20 text-center space-y-4">
-          <div className="text-4xl">📚</div>
-          <div className="space-y-1.5">
-            <div className="text-sm font-medium">No research projects yet</div>
-            <div className="text-xs text-muted-foreground">
-              Start one with the form above, or from the CLI
-            </div>
+        <CardContent className="py-12 sm:py-16 text-center space-y-3">
+          <div className="text-sm font-medium">Nothing here yet</div>
+          <div className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
+            Drop a research topic into the form above to kick off a run —
+            typically 30–60 min end-to-end. Full report lands here when it
+            finishes.
           </div>
-          <code className="inline-block bg-muted px-3 py-1.5 rounded text-xs font-mono">
-            bun run src/run.ts &quot;your research topic&quot;
-          </code>
         </CardContent>
       </Card>
     );

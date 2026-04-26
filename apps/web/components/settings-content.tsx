@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { WebhookCard } from "./webhook-card";
 
 type ApiKey = {
   id: string;
@@ -178,7 +179,7 @@ function UsersSection() {
           <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
             Invite user
           </div>
-          <form onSubmit={handleCreate} className="grid sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
+          <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
             <label>
               <div className="text-xs text-muted-foreground mb-1">Email</div>
               <input
@@ -207,7 +208,7 @@ function UsersSection() {
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value as any)}
-                className="px-3 py-1.5 text-sm rounded-md border border-border bg-background focus:outline-none focus:border-primary/50"
+                className="w-full sm:w-auto px-3 py-1.5 text-sm rounded-md border border-border bg-background focus:outline-none focus:border-primary/50"
               >
                 <option value="user">user</option>
                 <option value="admin">admin</option>
@@ -216,7 +217,7 @@ function UsersSection() {
             <button
               type="submit"
               disabled={creating || !email || password.length < 8}
-              className="text-sm px-4 py-1.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full sm:w-auto text-sm px-4 py-1.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {creating ? "…" : "Add"}
             </button>
@@ -278,6 +279,7 @@ function timeFmt(ms: number | null): string {
 }
 
 export function SettingsContent() {
+  const [role, setRole] = useState<"admin" | "user" | null>(null);
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -290,16 +292,16 @@ export function SettingsContent() {
   async function load() {
     setError(null);
     try {
-      const r = await fetch("/api/admin/keys");
-      if (!r.ok) {
-        setError(
-          r.status === 401
-            ? "Unauthorized — log in with Basic Auth credentials"
-            : `Load failed: HTTP ${r.status}`
-        );
+      const me = await fetch("/api/auth/me").then((r) => r.json()).catch(() => null);
+      setRole(me?.user?.role ?? null);
+      // Per-user endpoint: any signed-in user lists + mints their own keys.
+      // Admin god-view of all keys still lives at /api/admin/keys (table in UsersSection).
+      const kr = await fetch("/api/keys");
+      if (!kr.ok) {
+        setError(`Load failed: HTTP ${kr.status}`);
         return;
       }
-      const data = await r.json();
+      const data = await kr.json();
       setKeys(data.keys ?? []);
     } catch (e: any) {
       setError(String(e?.message ?? e));
@@ -315,7 +317,7 @@ export function SettingsContent() {
     setCreating(true);
     setError(null);
     try {
-      const r = await fetch("/api/admin/keys", {
+      const r = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -338,7 +340,7 @@ export function SettingsContent() {
   async function handleRevoke(id: string) {
     if (!confirm("Revoke this key? Consumers using it will be cut off.")) return;
     try {
-      const r = await fetch(`/api/admin/keys/${id}`, { method: "DELETE" });
+      const r = await fetch(`/api/keys/${id}`, { method: "DELETE" });
       if (!r.ok) setError(`Revoke failed: HTTP ${r.status}`);
       await load();
     } catch (e: any) {
@@ -354,14 +356,25 @@ export function SettingsContent() {
       {/* Password change */}
       <PasswordCard />
 
+      {/* Webhook (per-user) */}
+      <WebhookCard />
+
       {/* Users (admin only) */}
       <UsersSection />
 
-      {/* API key create form */}
+      {/* API keys — per-user. Any signed-in user can mint + revoke their
+          own keys; admins also see everyone's keys in UsersSection above. */}
       <div className="pt-2 border-t border-border/40">
-        <h2 className="text-lg font-semibold tracking-tight mb-3">API keys</h2>
+        <h2 className="text-lg font-semibold tracking-tight mb-1">API keys</h2>
+        <p className="text-[13px] text-muted-foreground mb-3 max-w-2xl">
+          Mint a scoped key to read your projects and trigger runs
+          programmatically. Consumers authed with your key see only your
+          research, not anyone else&apos;s. Raw value is shown once —
+          store it immediately.
+        </p>
       </div>
 
+      <>
       {/* Create form */}
       <Card className="border-border/60">
         <CardContent className="py-4 px-5 space-y-3">
@@ -526,6 +539,7 @@ export function SettingsContent() {
           </div>
         </section>
       )}
+      </>
     </div>
   );
 }

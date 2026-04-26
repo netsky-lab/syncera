@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Research Lab — Overview</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles-2.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="workspace">
+      <div class="ws-logo">R</div>
+      <div>
+        <div class="ws-name">Research Lab</div>
+        <div class="ws-sub">questrov-first</div>
+      </div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:auto;color:var(--fg-4)"><polyline points="7 15 12 20 17 15"/><polyline points="7 9 12 4 17 9"/></svg>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-item active" data-nav="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Overview
+        <span class="kbd">⌘1</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        Projects
+        <span class="kbd">⌘2</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        API
+        <span class="kbd">⌘3</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Recent</div>
+      <div class="recent-list">
+        <a class="recent-item" data-nav="detail"><span class="dot"></span>Cream composition → skin effects</a>
+        <a class="recent-item"><span class="dot"></span>Polysorbate 60 safety review</a>
+        <a class="recent-item"><span class="dot pending"></span>Ethylhexyl methoxycinnamate</a>
+        <a class="recent-item"><span class="dot"></span>Diethylamino hydroxybenzoyl</a>
+      </div>
+    </div>
+
+    <div class="sidebar-spacer"></div>
+
+    <div class="user-pill">
+      <div class="user-avatar">OL</div>
+      <div>
+        <div class="user-name">olga</div>
+        <div class="user-mail">umbrella-trade.com</div>
+      </div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:auto;color:var(--fg-4)"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+  </aside>
+
+  <div>
+    <header class="topbar">
+      <div class="crumbs">
+        <span>Research Lab</span>
+        <span class="sep">/</span>
+        <span class="current" id="crumb-page">Overview</span>
+      </div>
+      <div class="status-chip"><span class="live-dot"></span>1 pipeline running · verify step</div>
+      <div class="top-right">
+        <button class="btn-ghost">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:-1px;margin-right:4px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Search <span class="kbd">⌘K</span>
+        </button>
+        <button class="btn-ghost">Docs</button>
+        <button class="btn-primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New investigation
+        </button>
+      </div>
+    </header>
+
+    <main class="page active" id="page-overview" data-screen-label="01 Overview">
+      <div class="eyebrow">Overview</div>
+      <h1 class="hero-title">
+        Hypothesis-free research, <em>grounded in</em><br/>
+        <span class="accent">verified evidence.</span>
+      </h1>
+      <p class="hero-desc">
+        Enter a topic. The engine decomposes it into literature-driven questions,
+        harvests primary sources across Arxiv, OpenAlex and SearXNG, cross-checks every
+        claim against its cited URL, and synthesizes the findings into a single citable document.
+      </p>
+
+      <section class="pipeline">
+        <div class="pipeline-head">
+          <div class="label">live pipeline</div>
+          <div class="meta">
+            <span>avg <strong>48 min</strong></span>
+            <span>p95 <strong>74 min</strong></span>
+            <span>success <strong>97.2%</strong></span>
+          </div>
+        </div>
+        <div class="pipeline-track">
+          <div class="pipeline-line"></div>
+          <div class="pipeline-progress" style="width: 60%"></div>
+
+          <div class="stage done">
+            <div class="stage-node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+            <div class="stage-num">01</div>
+            <div class="stage-name">Scout</div>
+            <div class="stage-desc">Scan the domain &amp; map sub-fields</div>
+            <div class="stage-log">→ 412 candidate topics</div>
+          </div>
+
+          <div class="stage done">
+            <div class="stage-node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+            <div class="stage-num">02</div>
+            <div class="stage-name">Plan</div>
+            <div class="stage-desc">Draft question tree &amp; hypotheses</div>
+            <div class="stage-log">→ 15 branches generated</div>
+          </div>
+
+          <div class="stage done">
+            <div class="stage-node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
+            <div class="stage-num">03</div>
+            <div class="stage-name">Harvest</div>
+            <div class="stage-desc">Pull primary sources across providers</div>
+            <div class="stage-log">→ 978 sources indexed</div>
+          </div>
+
+          <div class="stage active">
+            <div class="stage-node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg></div>
+            <div class="stage-num">04</div>
+            <div class="stage-name">Verify</div>
+            <div class="stage-desc">Cross-check each claim against its URL</div>
+            <div class="stage-log" id="verifyLog">verifying 184 / 278 claims…</div>
+          </div>
+
+          <div class="stage">
+            <div class="stage-node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+            <div class="stage-num">05</div>
+            <div class="stage-name">Analyze</div>
+            <div class="stage-desc">Weight evidence &amp; resolve conflicts</div>
+            <div class="stage-log">pending</div>
+          </div>
+
+          <div class="stage">
+            <div class="stage-node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <div class="stage-num">06</div>
+            <div class="stage-name">Synth</div>
+            <div class="stage-desc">Assemble citable report</div>
+            <div class="stage-log">pending</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="row-3">
+        <div class="cta-card">
+          <div class="cta-head">
+            <h3>Start a new investigation</h3>
+            <span class="tag">typically 30–80 min</span>
+          </div>
+          <div class="cta-input-wrap">
+            <input class="cta-input" placeholder="Enter a topic, question, or paste a reference…" value="How does the ratio of Cetearyl Alcohol to Polysorbate 60 affect skin penetration?" />
+            <div class="cta-controls">
+              <button class="chip">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                Sources <span class="v">all</span>
+              </button>
+              <button class="chip">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                Depth <span class="v">deep</span>
+              </button>
+              <button class="chip">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Window <span class="v">5 y</span>
+              </button>
+              <div class="spacer"></div>
+              <button class="run-btn">
+                <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Run
+              </button>
+            </div>
+          </div>
+          <div class="cta-examples">
+            <span class="cta-example">Compare UV filters by hazard score</span>
+            <span class="cta-example">Evidence for niacinamide + retinol stacking</span>
+            <span class="cta-example">Ceramide occlusivity benchmarks</span>
+          </div>
+        </div>
+
+        <div class="metrics-card">
+          <div class="metrics-head">
+            <h3>Library</h3>
+            <span class="tag">lifetime · +7 d</span>
+          </div>
+          <div class="metrics-grid">
+            <div class="metric">
+              <div class="lbl">Projects</div>
+              <div class="val">3 <span class="delta">+1</span></div>
+              <svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline fill="none" stroke="#e8a584" stroke-width="1.2" points="0,18 15,17 30,14 45,15 60,11 75,10 90,6 100,4"/></svg>
+            </div>
+            <div class="metric">
+              <div class="lbl">Questions</div>
+              <div class="val">15 <span class="delta">+4</span></div>
+              <svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline fill="none" stroke="#e8a584" stroke-width="1.2" points="0,20 15,18 30,16 45,13 60,14 75,9 90,7 100,5"/></svg>
+            </div>
+            <div class="metric">
+              <div class="lbl">Claims verified</div>
+              <div class="val">278 <span class="delta">+62</span></div>
+              <svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline fill="none" stroke="#6ee7a0" stroke-width="1.2" points="0,22 15,19 30,17 45,13 60,10 75,8 90,6 100,3"/></svg>
+            </div>
+            <div class="metric">
+              <div class="lbl">Sources</div>
+              <div class="val">978 <span class="delta">+141</span></div>
+              <svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline fill="none" stroke="#6ee7a0" stroke-width="1.2" points="0,22 15,20 30,16 45,15 60,11 75,9 90,5 100,3"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-head">
+        <h2>Your research</h2>
+        <div class="filters">
+          <span class="filter-chip active">All <span style="color:var(--fg-4)">3</span></span>
+          <span class="filter-chip">Verified</span>
+          <span class="filter-chip">Running</span>
+          <span class="filter-chip">Drafts</span>
+          <span style="width:14px"></span>
+          <span class="filter-chip">Sort: recent ↓</span>
+        </div>
+      </div>
+
+      <div class="research-table">
+        <div class="research-row header">
+          <div class="col-head">Investigation</div>
+          <div class="col-head">Sources</div>
+          <div class="col-head">Claims verified</div>
+          <div class="col-head">Updated</div>
+          <div class="col-head">Status</div>
+          <div></div>
+        </div>
+
+        <div class="research-row" data-nav="detail">
+          <div class="r-title">
+            <div class="r-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></div>
+            <div class="r-title-text">
+              <div class="q">How does cream composition affect the skin?</div>
+              <div class="sub">Water, Cetearyl Alcohol, Polysorbate 60, Ethylhexyl Methoxycinnamate …</div>
+            </div>
+          </div>
+          <div class="r-stats">
+            <span class="s"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><strong>275</strong></span>
+          </div>
+          <div>
+            <div class="r-claims">73 <span class="of">/ 73</span></div>
+            <div class="r-verify-bar"><span style="width:100%"></span></div>
+          </div>
+          <div class="r-date">4 d ago</div>
+          <div><span class="r-status"><span class="dot"></span>verified</span></div>
+          <div class="r-arrow">→</div>
+        </div>
+
+        <div class="research-row">
+          <div class="r-title">
+            <div class="r-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div class="r-title-text">
+              <div class="q">How should this cream composition affect the skin?</div>
+              <div class="sub">Water, Cetearyl Alcohol, Polysorbate 60, Ethylhexyl Methoxycinnamate …</div>
+            </div>
+          </div>
+          <div class="r-stats">
+            <span class="s"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><strong>279</strong></span>
+          </div>
+          <div>
+            <div class="r-claims">82 <span class="of">/ 109</span></div>
+            <div class="r-verify-bar"><span style="width:75%;background:var(--yellow)"></span></div>
+          </div>
+          <div class="r-date">2 d ago</div>
+          <div><span class="r-status running"><span class="dot"></span>verifying</span></div>
+          <div class="r-arrow">→</div>
+        </div>
+
+        <div class="research-row">
+          <div class="r-title">
+            <div class="r-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <div class="r-title-text">
+              <div class="q">Water, Cetearyl Alcohol, Polysorbate 60, Ethylhexyl Methoxy…</div>
+              <div class="sub">Full formulation deep-dive · 12 target ingredients</div>
+            </div>
+          </div>
+          <div class="r-stats">
+            <span class="s"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><strong>424</strong></span>
+          </div>
+          <div>
+            <div class="r-claims">99 <span class="of">/ 99</span></div>
+            <div class="r-verify-bar"><span style="width:100%"></span></div>
+          </div>
+          <div class="r-date">Mar 04</div>
+          <div><span class="r-status"><span class="dot"></span>verified</span></div>
+          <div class="r-arrow">→</div>
+        </div>
+      </div>
+    </main>
+
+    <main class="page" id="page-detail" data-screen-label="02 Investigation" style="padding: 28px 40px 80px; max-width: 1320px; width: 100%;">
+      <div class="doc-crumb">
+        <a data-nav="overview">← Research</a>
+        <span class="sep">·</span>
+        <span>Investigation #0231</span>
+      </div>
+
+      <div class="detail-layout">
+        <div>
+          <h1 class="doc-title">How does cream composition affect the skin? A cross-ingredient synthesis on permeation, irritation and photostability.</h1>
+          <div class="doc-meta">
+            <span>completed · Apr 16, 2026</span>
+            <span class="sep">·</span>
+            <span><strong style="color:var(--fg)">275</strong> sources</span>
+            <span class="sep">·</span>
+            <span><strong style="color:var(--green)">73 / 73</strong> claims verified</span>
+            <span class="sep">·</span>
+            <span>Arxiv · OpenAlex · SearXNG</span>
+            <span class="sep">·</span>
+            <span>48 min runtime</span>
+          </div>
+
+          <div class="tabs">
+            <div class="tab active">Summary</div>
+            <div class="tab">Claims <span class="count">73</span></div>
+            <div class="tab">Sources <span class="count">275</span></div>
+            <div class="tab">Question tree <span class="count">15</span></div>
+            <div class="tab">Pipeline log</div>
+          </div>
+
+          <div class="tl-section-head">
+            <h3>Key findings</h3>
+            <span class="n">4 verified</span>
+            <div class="line"></div>
+          </div>
+          <div class="kf-grid">
+            <div class="kf">
+              <div class="lbl">Permeation driver</div>
+              <div class="v">Polysorbate 60 increased transepidermal delivery of lipophilic UV filters by <span class="hi">2.3–4.1×</span> vs. non-surfactant controls.</div>
+            </div>
+            <div class="kf">
+              <div class="lbl">Photostability</div>
+              <div class="v">Ethylhexyl methoxycinnamate degrades <span class="hi">≈38%</span> after 2 h UVA without photostabilizers; DHHB stabilizes it.</div>
+            </div>
+            <div class="kf">
+              <div class="lbl">Irritation signal</div>
+              <div class="v">Concentrations of Cetearyl Alcohol above <span class="hi">5.5%</span> correlate with higher patch-test reactivity (n=14 studies).</div>
+            </div>
+            <div class="kf">
+              <div class="lbl">Emulsion stability</div>
+              <div class="v">C12-15 Alkyl Benzoate as secondary emollient keeps viscosity drift under <span class="hi">6%</span> at 40 °C for 90 days.</div>
+            </div>
+          </div>
+
+          <div class="tl-section-head">
+            <h3>Synthesis</h3>
+            <span class="n">auto-generated</span>
+            <div class="line"></div>
+          </div>
+          <div class="summary-card">
+            <p>Across the 275 primary sources indexed for this formulation, the strongest cross-paper signal concerns the <strong>interaction between non-ionic surfactants and lipophilic UV filters</strong>. Polysorbate 60, at the typical 1–3% emulsifier load, measurably enhances the stratum corneum uptake of ethylhexyl methoxycinnamate and C12-15 alkyl benzoate-dissolved actives<span class="cite">[1,4,9]</span>. This is not a safety red flag in itself, but it shifts the filter's residence profile from a surface-protective layer toward deeper skin compartments<span class="cite">[2]</span>.</p>
+            <p>The evidence on photostability is unambiguous: ethylhexyl methoxycinnamate degrades rapidly under UVA in the absence of a stabilizer, losing roughly a third of its activity within two hours<span class="cite">[11,12]</span>. Reformulations pairing it with diethylamino hydroxybenzoyl hexyl benzoate (DHHB) retain &gt;85% of initial SPF contribution at the same exposure<span class="cite">[13]</span>.</p>
+            <p>On tolerability, cetearyl alcohol is broadly well-tolerated but a dose-response relationship emerges above the 5.5% threshold, with 14 of the 18 patch-test studies reporting elevated erythema scores at 6.0–8.5%<span class="cite">[21,22,23]</span>.</p>
+          </div>
+
+          <div class="tl-section-head">
+            <h3>Top verified claims</h3>
+            <span class="n">4 of 73</span>
+            <div class="line"></div>
+          </div>
+
+          <div class="claim">
+            <div class="claim-num">C-01</div>
+            <div class="claim-body">
+              <div class="txt">Polysorbate 60 at 1.5–3% w/w significantly increases transdermal permeation of ethylhexyl methoxycinnamate compared to non-surfactant emulsions.</div>
+              <div class="srcs"><span>cited in</span><a>Franz cell study, 2021</a><span class="sep">·</span><a>in vitro diffusion, 2019</a><span class="sep">·</span><a>+ 5 more</a></div>
+            </div>
+            <span class="claim-verdict ok">✓ verified</span>
+          </div>
+          <div class="claim">
+            <div class="claim-num">C-02</div>
+            <div class="claim-body">
+              <div class="txt">Ethylhexyl methoxycinnamate loses ~38% of its UVA-absorption activity after 2 hours of unfiltered UVA exposure when formulated without photostabilizers.</div>
+              <div class="srcs"><span>cited in</span><a>Photodermatol, 2018</a><span class="sep">·</span><a>J Cosmet Sci, 2020</a><span class="sep">·</span><a>+ 3 more</a></div>
+            </div>
+            <span class="claim-verdict ok">✓ verified</span>
+          </div>
+          <div class="claim">
+            <div class="claim-num">C-03</div>
+            <div class="claim-body">
+              <div class="txt">Cetearyl alcohol concentrations above ~5.5% correlate with increased patch-test reactivity in sensitive populations.</div>
+              <div class="srcs"><span>cited in</span><a>Contact Dermatitis, 2022</a><span class="sep">·</span><a>+ 13 more</a></div>
+            </div>
+            <span class="claim-verdict partial">◐ partial</span>
+          </div>
+          <div class="claim">
+            <div class="claim-num">C-04</div>
+            <div class="claim-body">
+              <div class="txt">C12-15 alkyl benzoate contributes to long-term emulsion viscosity drift &lt;6% at 40°C over 90 days when used at 3–7% as secondary emollient.</div>
+              <div class="srcs"><span>cited in</span><a>IJCS, 2017</a><span class="sep">·</span><a>Technical bulletin, Inolex</a></div>
+            </div>
+            <span class="claim-verdict ok">✓ verified</span>
+          </div>
+
+          <div class="tl-section-head">
+            <h3>Primary sources</h3>
+            <span class="n">top 5 of 275</span>
+            <div class="line"></div>
+          </div>
+
+          <div class="src-wrap">
+            <div class="src">
+              <div class="src-fav arxiv">aX</div>
+              <div style="min-width:0">
+                <div class="src-title">In vitro permeation of organic UV filters across porcine skin: the role of non-ionic surfactants</div>
+                <div class="src-url">arxiv.org/abs/2109.04532 · 2021</div>
+              </div>
+              <div class="src-cited">cited <strong>12×</strong></div>
+              <div class="src-badge">peer-reviewed</div>
+            </div>
+            <div class="src">
+              <div class="src-fav openalex">oA</div>
+              <div style="min-width:0">
+                <div class="src-title">Photostabilization of ethylhexyl methoxycinnamate with DHHB — a comparative study</div>
+                <div class="src-url">openalex.org/W4214891037 · 2020</div>
+              </div>
+              <div class="src-cited">cited <strong>9×</strong></div>
+              <div class="src-badge">peer-reviewed</div>
+            </div>
+            <div class="src">
+              <div class="src-fav arxiv">aX</div>
+              <div style="min-width:0">
+                <div class="src-title">Emulsion viscosity drift with C12-15 alkyl benzoate at variable loadings</div>
+                <div class="src-url">arxiv.org/abs/1906.11284 · 2019</div>
+              </div>
+              <div class="src-cited">cited <strong>7×</strong></div>
+              <div class="src-badge">preprint</div>
+            </div>
+            <div class="src">
+              <div class="src-fav searxng">sX</div>
+              <div style="min-width:0">
+                <div class="src-title">Contact dermatitis case series involving cetearyl alcohol at cosmetic-grade loadings</div>
+                <div class="src-url">pubmed.ncbi.nlm.nih.gov/34987123 · 2022</div>
+              </div>
+              <div class="src-cited">cited <strong>6×</strong></div>
+              <div class="src-badge">peer-reviewed</div>
+            </div>
+            <div class="src">
+              <div class="src-fav openalex">oA</div>
+              <div style="min-width:0">
+                <div class="src-title">Transepidermal water loss with polysorbate 60-stabilized emulsions</div>
+                <div class="src-url">openalex.org/W3119473820 · 2018</div>
+              </div>
+              <div class="src-cited">cited <strong>5×</strong></div>
+              <div class="src-badge">peer-reviewed</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rail">
+          <div class="rail-card">
+            <h4>On this page</h4>
+            <a class="toc-item active">Key findings</a>
+            <a class="toc-item">Synthesis</a>
+            <a class="toc-item">Top verified claims</a>
+            <a class="toc-item">Primary sources</a>
+            <a class="toc-item">Question tree</a>
+            <a class="toc-item">Methodology</a>
+          </div>
+
+          <div class="rail-card">
+            <h4>Breakdown</h4>
+            <div class="rail-stat"><span class="k">claims</span><span class="v">73</span></div>
+            <div class="rail-stat"><span class="k">verified</span><span class="v" style="color:var(--green)">63</span></div>
+            <div class="rail-stat"><span class="k">partial</span><span class="v" style="color:var(--yellow)">8</span></div>
+            <div class="rail-stat"><span class="k">contradicted</span><span class="v" style="color:var(--danger)">2</span></div>
+            <div class="rail-stat" style="border-top:1px solid var(--line); margin-top:6px; padding-top:10px"><span class="k">sources</span><span class="v">275</span></div>
+            <div class="rail-stat"><span class="k">arxiv</span><span class="v">94</span></div>
+            <div class="rail-stat"><span class="k">openalex</span><span class="v">128</span></div>
+            <div class="rail-stat"><span class="k">searxng</span><span class="v">53</span></div>
+          </div>
+
+          <div class="rail-card">
+            <h4>Pipeline log</h4>
+            <div class="activity-item"><span class="t">+48m</span><span class="msg"><span class="hi">synth</span> assembled final report · 4 sections</span></div>
+            <div class="activity-item"><span class="t">+42m</span><span class="msg"><span class="hi">analyze</span> resolved 2 contradictions in claim C-18</span></div>
+            <div class="activity-item"><span class="t">+26m</span><span class="msg"><span class="hi">verify</span> 73 / 73 claims validated against source URLs</span></div>
+            <div class="activity-item"><span class="t">+11m</span><span class="msg"><span class="hi">harvest</span> fetched 275 sources from 3 providers</span></div>
+            <div class="activity-item"><span class="t">+04m</span><span class="msg"><span class="hi">plan</span> decomposed topic into 15 sub-questions</span></div>
+            <div class="activity-item"><span class="t">+00m</span><span class="msg"><span class="hi">scout</span> mapped domain · emulsion chem, photostab.</span></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+  (function() {
+    const log = document.getElementById('verifyLog');
+    if (!log) return;
+    let done = 184;
+    const total = 278;
+    setInterval(() => {
+      done = Math.min(total, done + Math.floor(Math.random() * 3));
+      if (done >= total) done = 160;
+      log.textContent = `verifying ${done} / ${total} claims…`;
+    }, 700);
+  })();
+
+  (function() {
+    const pages = {
+      overview: document.getElementById('page-overview'),
+      detail: document.getElementById('page-detail'),
+    };
+    const crumb = document.getElementById('crumb-page');
+    function go(page) {
+      Object.keys(pages).forEach(k => pages[k].classList.toggle('active', k === page));
+      crumb.textContent = page === 'detail' ? 'Investigation #0231' : 'Overview';
+      document.querySelectorAll('.sidebar .nav-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.nav === 'overview' && page === 'overview');
+      });
+      try { localStorage.setItem('rl_page', page); } catch(e){}
+      window.scrollTo(0, 0);
+    }
+    document.querySelectorAll('[data-nav]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        const page = el.dataset.nav;
+        if (!page || !pages[page]) return;
+        e.preventDefault();
+        go(page);
+      });
+    });
+    try {
+      const saved = localStorage.getItem('rl_page');
+      if (saved && pages[saved]) go(saved);
+    } catch(e){}
+  })();
+
+  document.querySelectorAll('.tabs').forEach(tabs => {
+    tabs.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+      });
+    });
+  });
+
+  document.querySelectorAll('.cta-example').forEach(ex => {
+    ex.addEventListener('click', () => {
+      const input = document.querySelector('.cta-input');
+      input.value = ex.textContent;
+      input.focus();
+    });
+  });
+</script>
+</body>
+</html>

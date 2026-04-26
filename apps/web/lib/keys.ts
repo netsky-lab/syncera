@@ -20,21 +20,31 @@ export interface ApiKey {
   created_at: number;
   last_used_at: number | null;
   revoked_at: number | null;
+  // Which user minted this key. Requests auth'd via this key inherit the
+  // owner's visibility — they can read all of the owner's projects, not
+  // just showcase. Env-seed keys (legacy) have `owner_uid: null`.
+  owner_uid?: string | null;
 }
 
-const STORE_PATH =
-  process.env.KEY_STORE_PATH ??
-  join(process.cwd(), "data", "api_keys.json");
+// Resolve per-call so tests (and any env changes) take effect without a
+// module reload.
+function storePath(): string {
+  return (
+    process.env.KEY_STORE_PATH ??
+    join(process.cwd(), "data", "api_keys.json")
+  );
+}
 
 function ensureDir() {
-  const dir = dirname(STORE_PATH);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const dir = dirname(storePath());
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
 }
 
 function readAll(): ApiKey[] {
-  if (!existsSync(STORE_PATH)) return [];
+  const p = storePath();
+  if (!existsSync(p)) return [];
   try {
-    return JSON.parse(readFileSync(STORE_PATH, "utf-8"));
+    return JSON.parse(readFileSync(p, "utf-8"));
   } catch {
     return [];
   }
@@ -42,7 +52,9 @@ function readAll(): ApiKey[] {
 
 function writeAll(keys: ApiKey[]) {
   ensureDir();
-  writeFileSync(STORE_PATH, JSON.stringify(keys, null, 2));
+  // mode 0o600 — stores SHA-256 hashes of raw keys; world-readable would
+  // let anyone with a read bit correlate prefix → hash for offline guesses.
+  writeFileSync(storePath(), JSON.stringify(keys, null, 2), { mode: 0o600 });
 }
 
 function sha256(s: string): string {
@@ -54,8 +66,12 @@ export function listKeys(): Omit<ApiKey, "hash">[] {
 }
 
 // Create a new key. Returns { id, raw } where `raw` is shown to the user
-// exactly once — never persisted.
-export function createKey(name: string): { id: string; raw: string; prefix: string } {
+// exactly once — never persisted. Pass `ownerUid` to scope the key to a
+// user's projects; omit for bootstrap/admin keys (rarely what you want).
+export function createKey(
+  name: string,
+  ownerUid: string | null = null
+): { id: string; raw: string; prefix: string } {
   const all = readAll();
   const rawBytes = randomBytes(24);
   const raw = "rl_" + rawBytes.toString("hex");
@@ -69,6 +85,7 @@ export function createKey(name: string): { id: string; raw: string; prefix: stri
     created_at: Date.now(),
     last_used_at: null,
     revoked_at: null,
+    owner_uid: ownerUid,
   };
   all.push(entry);
   writeAll(all);

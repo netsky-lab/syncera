@@ -1,7 +1,9 @@
-# Research Lab web UI — standalone Next.js build served by Node.
+# Syncera web UI — standalone Next.js build served by Node.
 # Two-stage: build with Bun (fast install + compile), run with Node.
-# Image is a read-only viewer; it expects the host to mount the projects
-# directory at /app/projects.
+# The container is read-write: the web process mutates /app/projects
+# when pipelines run (spawned via the mounted host docker socket),
+# and /app/data for the users/keys store. Both should be bind-mounted
+# from the host for persistence across rebuilds — see deploy/docker-compose.yml.
 
 # ---- Stage 1: build ----
 FROM oven/bun:1 AS builder
@@ -50,9 +52,9 @@ ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
-# BASIC_AUTH_PASS must be set at runtime via docker-compose or -e flag
-# ENV BASIC_AUTH_USER=research
-# ENV BASIC_AUTH_PASS=...
+# Runtime env lives in deploy/.env, not baked into the image. Required at
+# runtime: SESSION_SECRET, GEMMA_BASE_URL. Optional: ADMIN_EMAIL/PASSWORD,
+# ALLOW_SIGNUP, API_KEYS, API_CORS_ORIGINS. See deploy/.env.example.
 
 USER app
 EXPOSE 3000

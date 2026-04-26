@@ -1,6 +1,11 @@
-import { generateJson } from "./llm";
+import { generateToolJson } from "./llm";
 import { config } from "./config";
-import { ResearchPlanSchema, type ResearchPlan } from "./schemas/plan";
+import {
+  ResearchPlanSchema,
+  type ResearchPlan,
+  type ResearchQuestion,
+  type Subquestion,
+} from "./schemas/plan";
 import type { ScoutDigest } from "./scout";
 
 const PLANNER_SYSTEM_PROMPT = `You are a senior research planner. Produce a plan that structures LITERATURE RESEARCH around concrete questions the user wants answered.
@@ -11,8 +16,8 @@ The plan is a QUESTION STRUCTURE, not a hypothesis with predicted numeric answer
 
 DO:
   - Formulate questions the user genuinely needs answered to act on the topic.
-  - Decompose each question into 2-4 searchable sub-questions that drive literature queries.
-  - Let the topic's scope determine the count — a narrow operational question gets 3 research questions; a broad survey gets 10+. Do not force a target count.
+  - Decompose each question into 2-5 searchable sub-questions that drive literature queries.
+  - Let the topic's scope determine the count inside the allowed range: at least 5 research questions, up to 15 for broad / ambiguous / product-critical topics.
 
 DO NOT:
   - Fabricate numeric thresholds ("≥50% reduction", "≤1.5% perplexity") — those are EVIDENCE outputs, not plan inputs.
@@ -47,7 +52,7 @@ Each question has a category that shapes the answer tone:
 
 ## Subquestions
 
-Each research question decomposes into 2-4 subquestions with a specific angle:
+Each research question decomposes into 2-5 subquestions with a specific angle:
   - benchmark: asks for numerical measurements
   - methodology: asks how the technique works
   - comparison: asks for head-to-head data
@@ -125,17 +130,31 @@ export async function makePlan(input: PlannerInput): Promise<ResearchPlan> {
     `Research topic: ${input.topic}`,
     input.constraints ? `Additional constraints: ${input.constraints}` : "",
     scoutingBlock,
-    "Produce the research plan. Questions count must match the topic scope, not a target number.",
+    "Produce the research plan. Use 5-15 research questions: never fewer than 5; use 10-15 when the topic has many methods, benchmarks, deployment paths, or unresolved trade-offs.",
+    "IDs must be explicit strings: questions Q1, Q2, ... and subquestions Q1.1, Q1.2, ...",
+    "Subquestion angle must be exactly one of: benchmark, methodology, comparison, case_study, feasibility, trade_off.",
+    "Question category must be exactly one of: factual, comparative, trade_off, feasibility, deployment, mechanism.",
   ]
     .filter(Boolean)
     .join("\n");
 
-  const { object, usage } = await generateJson({
-    schema: ResearchPlanSchema,
-    system: PLANNER_SYSTEM_PROMPT,
-    prompt,
-    endpoint: config.endpoints.planner,
-  });
+  let object: ResearchPlan;
+  let usage: { totalTokens: number };
+  try {
+    const res = await generateToolJson({
+      schema: ResearchPlanSchema,
+      system: PLANNER_SYSTEM_PROMPT,
+      prompt,
+      toolName: "create_research_plan",
+      toolDescription:
+        "Create the complete question-first research plan for the requested topic.",
+      endpoint: config.endpoints.planner,
+    });
+    object = normalizePlan(res.object, input.topic, input.constraints);
+    usage = res.usage;
+  } catch (err: any) {
+    throw new Error(`Function-call planner failed: ${err.message ?? err}`);
+  }
 
   // Ensure topic is preserved verbatim (Qwen sometimes rewrites it).
   object.topic = input.topic;
@@ -151,4 +170,113 @@ export async function makePlan(input: PlannerInput): Promise<ResearchPlan> {
   );
 
   return object;
+}
+
+export function normalizePlan(
+  plan: ResearchPlan,
+  topic: string,
+  constraints?: string
+): ResearchPlan {
+  const questions = (plan.questions ?? [])
+    .filter((q) => q.question?.trim())
+    .slice(0, 15)
+    .map((q, i) => normalizeQuestion(q, i));
+
+  while (questions.length < 5) {
+    const i = questions.length;
+    questions.push(
+      normalizeQuestion(makeFallbackQuestion(topic, i, constraints), i)
+    );
+  }
+
+  return {
+    ...plan,
+    topic,
+    constraints: plan.constraints || constraints,
+    questions,
+  };
+}
+
+function normalizeQuestion(q: ResearchQuestion, index: number): ResearchQuestion {
+  const id = `Q${index + 1}`;
+  const subquestions = (q.subquestions ?? [])
+    .filter((s) => s.text?.trim())
+    .slice(0, 5);
+  while (subquestions.length < 2) {
+    subquestions.push(makeFallbackSubquestion(q.question, subquestions.length));
+  }
+  return {
+    ...q,
+    id,
+    subquestions: subquestions.map((s, i) => ({
+      ...s,
+      id: `${id}.${i + 1}`,
+    })),
+  };
+}
+
+function makeFallbackSubquestion(question: string, index: number): Subquestion {
+  return index === 0
+    ? {
+        id: "",
+        text: `What primary evidence directly answers: ${question}`,
+        angle: "benchmark",
+      }
+    : {
+        id: "",
+        text: `What limitations, contradictions, or missing evidence affect: ${question}`,
+        angle: "trade_off",
+      };
+}
+
+function makeFallbackQuestion(
+  topic: string,
+  index: number,
+  constraints?: string
+): ResearchQuestion {
+  const templates = [
+    {
+      question: `What source types provide the strongest evidence for ${topic}?`,
+      category: "factual" as const,
+      angles: ["methodology", "comparison"] as const,
+    },
+    {
+      question: `Where do credible sources disagree or leave unresolved gaps on ${topic}?`,
+      category: "trade_off" as const,
+      angles: ["comparison", "trade_off"] as const,
+    },
+    {
+      question: `What adoption, workflow, or deployment constraints determine whether ${topic} is useful in practice?`,
+      category: "deployment" as const,
+      angles: ["case_study", "feasibility"] as const,
+    },
+    {
+      question: `Which measurable outcomes should be used to evaluate ${topic}?`,
+      category: "mechanism" as const,
+      angles: ["benchmark", "methodology"] as const,
+    },
+    {
+      question: `What boundary conditions should prevent overgeneralizing findings about ${topic}${constraints ? ` under ${constraints}` : ""}?`,
+      category: "feasibility" as const,
+      angles: ["feasibility", "trade_off"] as const,
+    },
+  ];
+  const t = templates[index % templates.length]!;
+  return {
+    id: "",
+    question: t.question,
+    category: t.category,
+    subquestions: [
+      {
+        id: "",
+        text: `Which primary or official sources directly address: ${t.question}`,
+        angle: t.angles[0],
+      },
+      {
+        id: "",
+        text: `What evidence would falsify or weaken: ${t.question}`,
+        angle: t.angles[1],
+      },
+    ],
+  };
 }

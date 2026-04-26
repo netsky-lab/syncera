@@ -18,19 +18,24 @@ fi
 TOPIC="$1"
 CONSTRAINTS="${2:-}"
 
-# Load .env if present
+# Load .env if present. `set -a` auto-exports every variable assigned by
+# `source`, so quoted values with spaces survive.
 if [ -f .env ]; then
-  export $(grep -v '^#' .env | grep -v '^$' | xargs -d '\n' -I{} echo {})
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
 fi
 
 docker run --rm -it \
-  --network searxng_default \
+  --network "${PIPELINE_NETWORK:-searxng_default}" \
   -v "$REPO_ROOT:/app" \
   -w /app \
   -e SEARXNG_URL="${SEARXNG_URL:-http://searxng-core:8080}" \
   -e GEMMA_BASE_URL="${GEMMA_BASE_URL:-}" \
-  -e GEMMA_MODEL="${GEMMA_MODEL:-gemma-4-26b-a4b-public-safe}" \
-  -e GEMMA_API_KEY="${GEMMA_API_KEY:-test}" \
+  -e GEMMA_MODEL="${GEMMA_MODEL:-qwen3.6-35b-a3b}" \
+  -e GEMMA_API_KEY="${GEMMA_API_KEY:-dummy}" \
+  -e GEMMA_FALLBACK_URLS="${GEMMA_FALLBACK_URLS:-}" \
   --name "rl-run-$(date +%s)" \
   oven/bun:1 \
   bun run src/run.ts "$TOPIC" ${CONSTRAINTS:+"$CONSTRAINTS"}

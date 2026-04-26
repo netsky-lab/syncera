@@ -119,9 +119,9 @@ export async function analyze(
 
   const factsById = new Map(verified.map((f) => [f.id, f]));
 
-  // Build per-question answers in parallel (endpoint has 5 slots,
-  // typical plans have 3-12 questions — parallelize with cap)
-  const ANALYZER_CONCURRENCY = 4;
+  // Build per-question answers in parallel. Gemini can tolerate more fan-out
+  // than a single self-hosted qwen/vLLM pod, so the default comes from config.
+  const ANALYZER_CONCURRENCY = config.concurrency.analyzer;
   const answers: QuestionAnswer[] = new Array(plan.questions.length);
 
   async function answerOne(i: number): Promise<void> {

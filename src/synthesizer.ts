@@ -217,7 +217,19 @@ export async function synthesize(
 
 // ---------------- LLM sections ----------------
 
-async function genIntroduction(plan: ResearchPlan): Promise<string> {
+// Append a user-supplied tweak hint to the end of a generator prompt.
+// Used by the per-section "Tweak" flow from the UI — lets a casual user
+// say "simplify this" / "don't mention specific brands" / "shorter"
+// without touching the source prompt.
+function tweakHint(hint?: string): string {
+  if (!hint || !hint.trim()) return "";
+  return `\n\nUSER ADJUSTMENT (apply this to the output — overrides conflicting defaults):\n${hint.trim()}`;
+}
+
+export async function genIntroduction(
+  plan: ResearchPlan,
+  hint?: string
+): Promise<string> {
   try {
     const { object } = await generateJson({
       schema: z.object({ introduction: z.string() }),
@@ -245,6 +257,7 @@ Research questions the report will answer:
 ${plan.questions.map((q) => `${q.id} [${q.category}]: ${q.question}`).join("\n")}
 
 ${plan.scope_notes ? `Scope notes: ${plan.scope_notes}` : ""}
+${tweakHint(hint)}
 
 Return JSON: {"introduction": "..."}`,
       maxRetries: 1,
@@ -257,9 +270,10 @@ Return JSON: {"introduction": "..."}`,
   }
 }
 
-async function genComparisonTable(
+export async function genComparisonTable(
   plan: ResearchPlan,
-  topFactsBlock: string
+  topFactsBlock: string,
+  hint?: string
 ): Promise<string> {
   try {
     const { object } = await generateJson({
@@ -291,11 +305,17 @@ Rules:
 - Do NOT fabricate metrics not in the facts.
 - Never use: significantly, substantially, important, promising.
 
+DOMAIN COHESION (critical — prevents off-topic table rows):
+- Each row must describe a SINGLE method in a SINGLE application context. Never merge facts from different application domains (e.g. cosmetic skincare + ophthalmic drug delivery) into one row — if a fact's source is from a different field than the topic, either exclude that fact or give it its own row explicitly labeled with the off-domain context.
+- The 'limitation' column must be a trade-off of the method ITSELF, not a description of the source paper's scope. Writing "validated for ophthalmic use" when the topic is cosmetic cream is a category confusion — that's an EXCLUSION reason, not a limitation.
+- If a method row would require merging 2+ facts whose sources describe different applications, scales, or populations, drop the row.
+
 Output JSON: {"methods": [...]}`,
       prompt: `Topic: ${plan.topic}
 
 Verified facts pool (top by confidence):
 ${topFactsBlock}
+${tweakHint(hint)}
 
 Return JSON: {"methods": [{"name":"...","headline_metric":"...","limitation":"...","citations":["F1","F2"]}]}`,
       maxRetries: 1,
@@ -322,10 +342,11 @@ Return JSON: {"methods": [{"name":"...","headline_metric":"...","limitation":"..
   }
 }
 
-async function genDeploymentSequence(
+export async function genDeploymentSequence(
   plan: ResearchPlan,
   topFactsBlock: string,
-  analysis: AnalysisReport
+  analysis: AnalysisReport,
+  hint?: string
 ): Promise<string[]> {
   // Extract blockers: facts/methods analyzer flagged as unavailable.
   // These are the methods we MUST NOT include deployment steps for,
@@ -371,6 +392,7 @@ ${blockerSnippets || "(none)"}
 
 Verified facts:
 ${topFactsBlock}
+${tweakHint(hint)}
 
 Return JSON: {"steps": ["1. ...", "2. ..."]}`,
       maxRetries: 1,
@@ -383,9 +405,10 @@ Return JSON: {"steps": ["1. ...", "2. ..."]}`,
   }
 }
 
-async function genRecommendation(
+export async function genRecommendation(
   plan: ResearchPlan,
-  analysis: AnalysisReport
+  analysis: AnalysisReport,
+  hint?: string
 ): Promise<string> {
   try {
     const answersBlock = analysis.answers
@@ -409,6 +432,10 @@ Rules:
 - Pick ACTUAL methods from evidence — do not invent.
 - Never use: significantly, substantially, effective, impressive, important, promising.
 
+INSTRUMENT GENERICITY (critical for measurement-based recommendations):
+- When a cited fact names a specific brand / commercial instrument as an example of a measurement category (e.g. VapoMeter, Tewameter, Corneometer, DermaLab Combo for TEWL; Visioscan, CM825 for other skin metrics), the recommendation MUST generalize to the instrument CATEGORY (e.g. "a TEWL meter", "a skin-barrier probe") unless the study's finding is specifically about that instrument's unique capability.
+- Bad: "measure TEWL with a VapoMeter" when the source merely uses VapoMeter as one example of a TEWL meter. Good: "measure TEWL with any calibrated TEWL meter (e.g. VapoMeter [F71])".
+
 ANTI-SPECULATION (critical):
 - Do NOT chain facts from different methods or different papers into an unverified integration claim. If F100 says "method A exists" and F140 says "framework B exists", you CANNOT recommend "deploy A via B" unless a third fact explicitly documents that integration.
 - If the best-supported approach comes from a different setup (different model, hardware) than the topic's target, say so explicitly rather than pretending the fit is known.
@@ -422,6 +449,7 @@ ${answersBlock}
 
 Cross-question tensions:
 ${(analysis.cross_question_tensions ?? []).map((t) => `  - ${t.description}`).join("\n") || "  (none)"}
+${tweakHint(hint)}
 
 Return JSON: {"recommendation": "..."}`,
       maxRetries: 1,

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ScopeChat } from "./scope-chat";
 
 interface LogEvent {
   type: "line" | "exit" | "error";
@@ -14,32 +15,104 @@ interface LogEvent {
 }
 
 function phaseFromLine(line: string): string | null {
-  if (line.includes("[phase:plan]")) return "plan";
-  if (line.includes("[phase:harvest]")) return "harvest";
-  if (line.includes("[phase:evidence]")) return "evidence";
-  if (line.includes("[phase:critic]")) return "critic";
-  if (line.includes("[phase:synth]")) return "synth";
-  return null;
+  const m = line.match(/\[phase:(\w+)\]/);
+  return m?.[1] ?? null;
 }
 
-const PHASES = ["plan", "harvest", "evidence", "critic", "synth"] as const;
+// Question-first pipeline phases in emission order. Scout runs first on
+// a brand-new topic; skipped on reruns with a cached digest.
+const PHASES = [
+  "scout",
+  "plan",
+  "harvest",
+  "evidence",
+  "verify",
+  "analyze",
+  "synth",
+] as const;
 const PHASE_LABELS: Record<string, string> = {
+  scout: "Scouting",
   plan: "Planning",
   harvest: "Harvesting",
-  evidence: "Extracting evidence",
-  critic: "Critiquing",
+  evidence: "Extracting facts",
+  verify: "Verifying",
+  analyze: "Analyzing",
   synth: "Synthesizing",
+  refine: "Refining",
 };
+
+// localStorage key carrying the last in-flight runId for this user so a
+// page refresh doesn't wipe the live log view.
+const LS_ACTIVE_RUN = "rl_active_run";
+
+// Starter topics surfaced below the textarea. Chosen to cover different
+// angles (comparative ML, applied chemistry, deployment trade-offs) so a
+// fresh user sees the scope of what the tool handles.
+const EXAMPLE_TOPICS: { label: string; topic: string }[] = [
+  {
+    label: "KV-cache compression",
+    topic:
+      "How to compress KV-cache to fit Qwen3.6-35B-A3B model into 4 GPU slots on RTX 5090 using TurboQuant or similar quantization methods",
+  },
+  {
+    label: "Cosmetic formulation",
+    topic:
+      "How should a sunscreen cream formulation with titanium dioxide, ethylhexyl methoxycinnamate, and diethylamino hydroxybenzoyl hexyl benzoate perform on photostability and skin penetration?",
+  },
+  {
+    label: "Battery longevity",
+    topic:
+      "What techniques extend lithium-ion battery cycle life in EV applications beyond 200,000 km, and how do solid-state cells compare on energy density and fast-charge tolerance?",
+  },
+  {
+    label: "LLM fine-tuning",
+    topic:
+      "Compare LoRA, QLoRA, DoRA, and full fine-tuning on a 70B model for domain adaptation: VRAM footprint, task degradation, and inference latency impact",
+  },
+];
 
 export function NewResearchForm() {
   const [topic, setTopic] = useState("");
   const [expanded, setExpanded] = useState(false);
+  const [chatMode, setChatMode] = useState(false);
+  const [sourcesMode, setSourcesMode] = useState(false);
+  const [userSourcesText, setUserSourcesText] = useState("");
   const [runId, setRunId] = useState<string | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
   const [events, setEvents] = useState<LogEvent[]>([]);
   const [currentPhase, setCurrentPhase] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "starting" | "running" | "done" | "error">("idle");
   const logRef = useRef<HTMLDivElement>(null);
+
+  // Resume-on-mount: if a run was in-flight on previous page load, reconnect.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_ACTIVE_RUN);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        runId: string;
+        slug: string;
+        topic: string;
+      };
+      // Only resume if the run still exists server-side.
+      fetch(`/api/runs`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const found = (d?.runs ?? []).find(
+            (r: any) => r.id === saved.runId
+          );
+          if (!found) {
+            localStorage.removeItem(LS_ACTIVE_RUN);
+            return;
+          }
+          setTopic(saved.topic);
+          setSlug(saved.slug);
+          setRunId(saved.runId);
+          setStatus(found.status === "running" ? "running" : found.status === "completed" ? "done" : "error");
+        })
+        .catch(() => {});
+    } catch {}
+  }, []);
 
   useEffect(() => {
     if (!runId) return;
@@ -55,10 +128,16 @@ export function NewResearchForm() {
         }
         if (ev.type === "exit") {
           setStatus(ev.code === 0 ? "done" : "error");
+          try {
+            localStorage.removeItem(LS_ACTIVE_RUN);
+          } catch {}
           es.close();
         }
         if (ev.type === "error") {
           setStatus("error");
+          try {
+            localStorage.removeItem(LS_ACTIVE_RUN);
+          } catch {}
           es.close();
         }
       } catch {}
@@ -76,19 +155,32 @@ export function NewResearchForm() {
   }, [events]);
 
   async function submit() {
-    if (!topic.trim() || topic.length < 10) return;
+    if (!topic.trim() || topic.length < 4) return;
     setStatus("starting");
+    const userSources = userSourcesText
+      .split(/\s+/)
+      .map((u) => u.trim())
+      .filter((u) => /^https?:\/\//.test(u));
     try {
       const resp = await fetch("/api/runs/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic }),
+        body: JSON.stringify({
+          topic,
+          ...(userSources.length > 0 ? { user_sources: userSources } : {}),
+        }),
       });
       const data = await resp.json();
       if (resp.ok) {
         setRunId(data.runId);
         setSlug(data.slug);
         setStatus("running");
+        try {
+          localStorage.setItem(
+            LS_ACTIVE_RUN,
+            JSON.stringify({ runId: data.runId, slug: data.slug, topic })
+          );
+        } catch {}
       } else {
         setStatus("error");
       }
@@ -104,6 +196,9 @@ export function NewResearchForm() {
     setCurrentPhase(null);
     setStatus("idle");
     setTopic("");
+    try {
+      localStorage.removeItem(LS_ACTIVE_RUN);
+    } catch {}
   }
 
   if (!expanded && status === "idle") {
@@ -117,10 +212,34 @@ export function NewResearchForm() {
             +
           </div>
           <div className="text-muted-foreground">
-            Start new research — enter a topic, engine runs plan → harvest → evidence → critic → report
+            Start new research — enter a topic, engine runs scout → plan → harvest → evidence → verify → analyze → synth
           </div>
         </CardContent>
       </Card>
+    );
+  }
+
+  // Chat mode takes over the card when the user clicks "Discuss scope".
+  // On successful run start, callback flips us back to the normal
+  // running-status view (shared with direct-start path).
+  if (chatMode && status === "idle") {
+    return (
+      <ScopeChat
+        initialTopic={topic}
+        onCancel={() => setChatMode(false)}
+        onRunStarted={(newRunId, newSlug) => {
+          setRunId(newRunId);
+          setSlug(newSlug);
+          setStatus("running");
+          setChatMode(false);
+          try {
+            localStorage.setItem(
+              LS_ACTIVE_RUN,
+              JSON.stringify({ runId: newRunId, slug: newSlug, topic })
+            );
+          } catch {}
+        }}
+      />
     );
   }
 
@@ -147,17 +266,89 @@ export function NewResearchForm() {
               disabled={status === "starting"}
               autoFocus
             />
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] text-muted-foreground">
-                Pipeline runs in a docker container. Typical time: 5–10 min.
+            {sourcesMode && (
+              <div className="space-y-1">
+                <div className="text-[11px] text-fg-muted">
+                  Paste URLs (one per line) — pipeline skips search+harvest
+                  and uses only these sources for evidence.
+                </div>
+                <textarea
+                  value={userSourcesText}
+                  onChange={(e) => setUserSourcesText(e.target.value)}
+                  placeholder="https://arxiv.org/abs/2310.12345&#10;https://www.biorxiv.org/..."
+                  rows={4}
+                  disabled={status === "starting"}
+                  className="w-full px-3 py-2 text-[12.5px] font-mono rounded-md bg-ink-900 border border-ink-500 text-fg placeholder:text-fg-muted focus:outline-none focus:border-accent-primary/60 resize-y"
+                />
+                <div className="text-[11px] text-fg-muted">
+                  {
+                    userSourcesText
+                      .split(/\s+/)
+                      .filter((u) => /^https?:\/\//.test(u.trim())).length
+                  }{" "}
+                  valid URLs · max 100
+                </div>
               </div>
-              <Button
-                onClick={submit}
-                disabled={!topic.trim() || topic.length < 10 || status === "starting"}
-                size="sm"
-              >
-                {status === "starting" ? "Starting…" : "Start research"}
-              </Button>
+            )}
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="text-muted-foreground">Try:</span>
+              {EXAMPLE_TOPICS.map((ex) => (
+                <button
+                  key={ex.label}
+                  type="button"
+                  onClick={() => setTopic(ex.topic)}
+                  className="px-2 py-0.5 rounded border border-border/60 hover:border-primary/50 hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground"
+                  title={ex.topic}
+                >
+                  {ex.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="space-y-0.5 text-[11px] text-fg-muted">
+                <div>Deep mode target: up to 400 sources · typical time: 30-90 min.</div>
+                <div>Qwen profile: 16 slots / 64k context · Gemini search can still supplement harvest.</div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => setSourcesMode((s) => !s)}
+                  disabled={status === "starting"}
+                  className={`h-9 px-3 rounded-md border text-[12px] font-medium transition disabled:opacity-50 inline-flex items-center gap-1.5 ${
+                    sourcesMode
+                      ? "bg-accent-primary/10 border-accent-primary/40 text-accent-primary"
+                      : "bg-ink-800 border-fg/[0.08] hover:bg-ink-700"
+                  }`}
+                  title="Bring your own source URLs instead of web search"
+                >
+                  <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                    <path d="M3 2h6l3 3v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zM8 2v4h4" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+                  </svg>
+                  Bring sources
+                </button>
+                <button
+                  onClick={() => setChatMode(true)}
+                  disabled={!topic.trim() || topic.length < 4 || status === "starting"}
+                  className="h-9 px-3 rounded-md bg-ink-800 border border-fg/[0.08] hover:bg-ink-700 text-[12px] font-medium transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                  title="Quick chat to pin down domain and scope before starting"
+                >
+                  <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                    <path
+                      d="M2 4.5A1.5 1.5 0 0 1 3.5 3h7A1.5 1.5 0 0 1 12 4.5v4A1.5 1.5 0 0 1 10.5 10H7l-2.5 2.5V10H3.5A1.5 1.5 0 0 1 2 8.5z"
+                      stroke="currentColor"
+                      strokeWidth="1.3"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Discuss scope
+                </button>
+                <button
+                  onClick={submit}
+                  disabled={!topic.trim() || topic.length < 4 || status === "starting"}
+                  className="h-9 px-4 rounded-md bg-accent-primary text-ink-900 text-[13px] font-semibold hover:brightness-110 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {status === "starting" ? "Starting…" : "Run now"}
+                </button>
+              </div>
             </div>
           </>
         )}

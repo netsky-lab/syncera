@@ -22,7 +22,7 @@ Always include specific notes citing the source text. If verdict != verified, pr
 
 Output JSON only matching the schema.`;
 
-function hashUrl(url: string): string {
+export function hashUrl(url: string): string {
   let h = 0;
   for (let i = 0; i < url.length; i++) h = ((h << 5) - h + url.charCodeAt(i)) | 0;
   return (
@@ -32,11 +32,11 @@ function hashUrl(url: string): string {
   );
 }
 
-function normalize(text: string): string {
+export function normalize(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-function extractKeywords(text: string): string[] {
+export function extractKeywords(text: string): string[] {
   const stopwords = new Set([
     "the","a","an","is","are","was","were","be","been","being","have","has","had",
     "do","does","did","will","would","could","should","may","might","can","must",
@@ -57,21 +57,77 @@ function extractKeywords(text: string): string[] {
   );
 }
 
-async function checkUrlAlive(url: string, timeoutMs = 5000): Promise<{ alive: boolean; status?: number; error?: string }> {
-  try {
+// Real-browser UA — some publishers (Elsevier, Sage, T&F) 403 anything that
+// looks like a bot, which previously caused our verifier to nuke valid facts
+// as `url_dead`. Modern Chrome UA slips past most of them.
+const BROWSER_UA =
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+
+// "Transient" statuses mean the URL infra is alive but doesn't want to
+// serve us right now (rate limit, auth wall, bot block, internal error).
+// Treating those as `url_dead` is a false-positive — the reader can still
+// resolve the citation in their own browser session.
+const TRANSIENT_STATUSES = new Set([401, 402, 403, 405, 406, 408, 409, 418, 429, 500, 501, 502, 503, 504]);
+
+async function checkUrlAlive(url: string, timeoutMs = 12000): Promise<{ alive: boolean; status?: number; error?: string }> {
+  // Try HEAD first (zero body transfer, polite). If the server doesn't
+  // support it (405/501) or range-specific endpoints confuse it, fall
+  // back to a tiny GET. This handles direct-PDF links (Springer, Wiley,
+  // tandfonline) that return 200 on GET but 405 on HEAD.
+  const attempt = async (method: "HEAD" | "GET") => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const resp = await fetch(url, {
-      method: "GET",
-      headers: { Range: "bytes=0-0", "User-Agent": "Mozilla/5.0 (research-lab fact-checker)" },
-      signal: controller.signal,
-      redirect: "follow",
-    });
-    clearTimeout(timer);
-    return { alive: resp.status < 400 || resp.status === 416, status: resp.status };
-  } catch (err: any) {
-    return { alive: false, error: err.message };
+    try {
+      const resp = await fetch(url, {
+        method,
+        headers: {
+          "User-Agent": BROWSER_UA,
+          Accept: "*/*",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        signal: controller.signal,
+        redirect: "follow",
+      });
+      clearTimeout(timer);
+      return { status: resp.status };
+    } catch (err: any) {
+      clearTimeout(timer);
+      return { error: err?.message ?? String(err) };
+    }
+  };
+
+  const head = await attempt("HEAD");
+  if (head.status !== undefined) {
+    if (head.status < 400) return { alive: true, status: head.status };
+    if (head.status === 416) return { alive: true, status: head.status };
+    // Transient / bot-block — try GET before giving up.
+    if (TRANSIENT_STATUSES.has(head.status) || head.status === 404) {
+      const get = await attempt("GET");
+      if (get.status !== undefined && get.status < 400) {
+        return { alive: true, status: get.status };
+      }
+      // 403/429/5xx after both HEAD+GET: treat as "can't verify from
+      // here" — not definitively dead. Downstream still gets to see the
+      // scraped content and run the quote+LLM check.
+      if (get.status !== undefined && TRANSIENT_STATUSES.has(get.status)) {
+        return { alive: true, status: get.status, error: "transient-bypass" };
+      }
+      return { alive: false, status: get.status ?? head.status, error: get.error };
+    }
+    return { alive: false, status: head.status };
   }
+  // HEAD network error — try GET.
+  const get = await attempt("GET");
+  if (get.status !== undefined) {
+    if (get.status < 400 || get.status === 416) {
+      return { alive: true, status: get.status };
+    }
+    if (TRANSIENT_STATUSES.has(get.status)) {
+      return { alive: true, status: get.status, error: "transient-bypass" };
+    }
+    return { alive: false, status: get.status };
+  }
+  return { alive: false, error: get.error ?? head.error };
 }
 
 function loadContent(url: string, contentDir: string): string | null {
@@ -197,7 +253,7 @@ Does the fact accurately follow from the source? Output JSON with exactly two fi
   }
 }
 
-function normalizeVerdict(s: string): Verification["verdict"] {
+export function normalizeVerdict(s: string): Verification["verdict"] {
   const lower = s.toLowerCase().trim();
   if (lower.includes("verif")) return "verified";
   if (lower.includes("overreach") || lower.includes("overstat")) return "overreach";

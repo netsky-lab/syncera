@@ -1,6 +1,9 @@
 import { chromium } from "playwright";
 import { existsSync } from "fs";
 import { join } from "path";
+import { requireAuth, viewerUidFromRequest } from "@/lib/auth";
+import { signSession, COOKIE_NAME } from "@/lib/sessions";
+import { canView } from "@/lib/projects";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,20 +17,35 @@ export async function GET(
 ) {
   const { slug } = await params;
 
-  // Verify project exists
+  // The caller needs to have been auth'd (via session cookie OR API key OR
+  // Basic Auth) to get here — requireAuth covers all three for /api/* paths.
+  const auth = requireAuth(request);
+  if (!auth.ok) return auth.response;
+
+  // Verify project exists AND caller can see it (own it or it's showcase).
   if (!existsSync(join(PROJECTS_DIR, slug, "plan.json"))) {
     return new Response("Project not found", { status: 404 });
   }
+  if (!canView(slug, viewerUidFromRequest(request))) {
+    return new Response("Project not found", { status: 404 });
+  }
 
-  // When the pipeline is behind BASIC_AUTH, the print page we're about
-  // to screenshot lives behind the same gate. Hit localhost (bypasses
-  // reverse-proxy if any) and forward the Authorization header so the
-  // middleware lets the internal chromium request through.
+  // The print page we render lives at /projects/<slug>/print and sits behind
+  // the session-cookie gate in middleware. Hit localhost directly (bypass
+  // any reverse proxy) and carry a session cookie so middleware lets
+  // chromium through.
   const origin = `http://127.0.0.1:${process.env.PORT ?? 3000}`;
   const printUrl = `${origin}/projects/${slug}/print`;
-  const authHeader = request.headers.get("authorization");
-  const pass = process.env.BASIC_AUTH_PASS;
-  const user = process.env.BASIC_AUTH_USER ?? "research";
+
+  // Prefer forwarding the caller's own session cookie if they have one
+  // (browser UI path). For API-key callers, mint a short-lived internal
+  // session — middleware only checks signature + expiry, not uid existence,
+  // so the "_pdf_internal_" uid passes without touching the user store.
+  const incomingCookie = request.headers.get("cookie") ?? "";
+  const cookieMatch = incomingCookie.match(
+    new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`)
+  );
+  const sessionToken = cookieMatch?.[1] ?? signSession("_pdf_internal_");
 
   let browser;
   try {
@@ -39,18 +57,18 @@ export async function GET(
       executablePath:
         process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
     });
-    const context = await browser.newContext({
-      // Forward the caller's Authorization if present, otherwise synthesize
-      // one from the server-side env (for cron-style re-generation).
-      extraHTTPHeaders:
-        authHeader || pass
-          ? {
-              authorization:
-                authHeader ??
-                "Basic " + Buffer.from(`${user}:${pass}`).toString("base64"),
-            }
-          : {},
-    });
+    const context = await browser.newContext();
+    await context.addCookies([
+      {
+        name: COOKIE_NAME,
+        value: sessionToken,
+        domain: "127.0.0.1",
+        path: "/",
+        httpOnly: true,
+        secure: false,
+        sameSite: "Lax",
+      },
+    ]);
     const page = await context.newPage();
     await page.emulateMedia({ media: "print" });
     await page.goto(printUrl, { waitUntil: "networkidle", timeout: 30000 });
@@ -61,7 +79,7 @@ export async function GET(
       displayHeaderFooter: true,
       headerTemplate: `
         <div style="font-family: ui-sans-serif, system-ui, sans-serif; font-size: 8pt; color: #888; width: 100%; padding: 0 16mm;">
-          <span>Research Lab</span>
+          <span>Syncera</span>
         </div>
       `,
       footerTemplate: `

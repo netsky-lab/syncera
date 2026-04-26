@@ -2,8 +2,9 @@
 //   ?include=plan,facts,analysis,verification,sources,report  (default: all)
 //   ?raw=1                                                    (return raw JSON not wrapped response)
 
-import { getProject } from "@/lib/projects";
-import { requireAuth, requireBasicAuth } from "@/lib/auth";
+import { getProject, getOwner } from "@/lib/projects";
+import { requireAuth, viewerUidFromRequest } from "@/lib/auth";
+import { findUserById } from "@/lib/users";
 import { rmSync, existsSync } from "fs";
 import { join } from "path";
 
@@ -17,7 +18,8 @@ export async function GET(
   const auth = requireAuth(request);
   if (!auth.ok) return auth.response;
   const { slug } = await params;
-  const project = getProject(slug);
+  const viewerUid = viewerUidFromRequest(request);
+  const project = getProject(slug, viewerUid);
   if (!project) {
     return Response.json({ error: "Project not found" }, { status: 404 });
   }
@@ -53,16 +55,16 @@ export async function GET(
   return Response.json(body);
 }
 
-// Admin-only: hard-delete a project directory.
+// Owner-or-admin: hard-delete a project directory. Users can delete their
+// own projects; admins can delete any. Non-owners get 403.
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
-  const auth = requireBasicAuth(request);
+  const auth = requireAuth(request);
   if (!auth.ok) return auth.response;
   const { slug } = await params;
 
-  // Resolve projects dir same way lib/projects does
   const PROJECTS_DIR = (() => {
     if (process.env.PROJECTS_DIR) return process.env.PROJECTS_DIR;
     const cwdProjects = join(process.cwd(), "projects");
@@ -74,8 +76,28 @@ export async function DELETE(
   if (!existsSync(join(projectDir, "plan.json"))) {
     return Response.json({ error: "Project not found" }, { status: 404 });
   }
+
+  const viewerUid = viewerUidFromRequest(request);
+  const viewerIsAdmin = viewerUid
+    ? findUserById(viewerUid)?.role === "admin"
+    : false;
+  const owner = getOwner(slug);
+  const isOwner = owner != null && viewerUid != null && owner === viewerUid;
+  if (!isOwner && !viewerIsAdmin) {
+    return Response.json(
+      { error: "Only the project owner or an admin can delete" },
+      { status: 403 }
+    );
+  }
+
   try {
     rmSync(projectDir, { recursive: true, force: true });
+    // Cascade: revoke any live share tokens pointing at this slug so the
+    // /shared/<token> URLs 404 instead of leaving dangling capabilities.
+    try {
+      const { listShareTokens, revokeShareToken } = require("@/lib/share-tokens") as typeof import("@/lib/share-tokens");
+      for (const t of listShareTokens(slug)) revokeShareToken(t.token);
+    } catch {}
     return Response.json({ ok: true, deleted: slug });
   } catch (err: any) {
     return Response.json(

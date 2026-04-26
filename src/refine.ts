@@ -20,23 +20,24 @@ import type { AnalysisReport } from "./schemas/fact";
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { z } from "zod";
+import { detectDomainProfile, domainPromptBlock } from "./domain-profile";
 
 const REFINE_QUERY_SYSTEM = `You generate narrow targeted search queries that attempt to close a specific research GAP. Given one research question, its current answer, and the gap list, produce 2-3 queries designed to surface the missing information.
 
 Rules:
 - Queries must be NARROWER than the original subquestions — they're trying to close a concrete hole, not re-survey.
-- Each query targets a single gap. Use the gap's named methods / hardware / benchmarks verbatim.
-- Prefer paper-title phrasing for academic channel and blog/doc phrasing for web channel.
+- Each query targets a single gap. Use the gap's named entities, methods, compounds, standards, hardware, populations, materials, or benchmarks verbatim.
+- Prefer paper-title / trial / standard phrasing for academic channel and official-doc / technical-report phrasing for web channel.
 - Return EXACTLY 2-3 queries.
 
 GOOD (narrow, gap-targeted):
-  ✓ "TurboQuant CUDA kernel RTX 5090 implementation"
-  ✓ "FP8 KV cache Ampere A100 fallback vLLM workaround"
-  ✓ "KV Pareto 78% memory reduction Qwen MoE benchmark"
+  ✓ "<specific method/entity> <missing metric> <setup/population/material>"
+  ✓ "<standard/guideline/source> <named gap> <year/version>"
+  ✓ "<comparator A> <comparator B> <exact outcome> study"
 
 BAD (broad, re-surveying):
-  ✗ "KV cache compression methods survey"
-  ✗ "TurboQuant overview"
+  ✗ "methods survey"
+  ✗ "topic overview"
 
 Output JSON: {"queries": [{"query": "...", "channel": "academic" | "web", "targets_gap": "..."}]}`;
 
@@ -49,6 +50,7 @@ export async function refine(
   plan: ResearchPlan,
   projectDir: string
 ): Promise<RefineResult> {
+  const domainProfile = detectDomainProfile(plan.topic, plan.constraints);
   const analysisPath = join(projectDir, "analysis_report.json");
   if (!existsSync(analysisPath)) {
     console.log("[refine] no analysis_report.json — nothing to refine");
@@ -118,7 +120,7 @@ export async function refine(
             })
           ),
         }),
-        system: REFINE_QUERY_SYSTEM,
+        system: `${REFINE_QUERY_SYSTEM}\n\n${domainPromptBlock(domainProfile)}`,
         prompt: `Research question ${q.id} [${q.category}]: ${q.question}
 
 Current answer (coverage: ${ans.coverage}):
@@ -219,6 +221,7 @@ Generate 2-3 narrow queries targeting these gaps.`,
         contents: newContents,
         numLearnings: 8,
         numFollowUps: 0,
+        domainProfile,
       });
       const prior: string[] = (existingIdx as any).learnings ?? [];
       (existingIdx as any).learnings = [...prior, ...extracted.learnings];

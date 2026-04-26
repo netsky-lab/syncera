@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {
+  const searchParams = useSearchParams();
+  const nextParam = searchParams.get("next");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -23,7 +26,12 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       });
       if (r.ok) {
         // Hard redirect so server-side cookie takes effect immediately.
-        window.location.href = "/";
+        // Only honor same-origin ?next paths to prevent open-redirect.
+        const dest =
+          nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+            ? nextParam
+            : "/";
+        window.location.href = dest;
         return;
       }
       const data = await r.json().catch(() => ({}));
@@ -88,16 +96,26 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
                 : "Create account"}
           </button>
         </form>
-        <div className="text-center text-[12px] text-muted-foreground pt-2 border-t border-border/40">
+        <div className="text-center text-[12px] text-muted-foreground pt-2 border-t border-border/40 space-y-2">
           {mode === "login" ? (
             <>
-              Need an account?{" "}
-              <Link
-                href="/signup"
-                className="text-primary/80 hover:text-primary underline decoration-dotted"
-              >
-                Sign up
-              </Link>
+              <div>
+                Need an account?{" "}
+                <Link
+                  href="/signup"
+                  className="text-primary/80 hover:text-primary underline decoration-dotted"
+                >
+                  Sign up
+                </Link>
+              </div>
+              <div>
+                <Link
+                  href="/forgot-password"
+                  className="text-muted-foreground hover:text-foreground underline decoration-dotted"
+                >
+                  Forgot password?
+                </Link>
+              </div>
             </>
           ) : (
             <>

@@ -36,3 +36,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Private project docs (internal vision, NOT shipped to OSS)
 .private/
 /projects/
+
+# Local user/key store (created by auth on first use; contains hashed passwords)
+/data/
+/apps/web/data/
+
+# Test artifacts (bun test temp dirs use /tmp, but in case of leakage)
+*.test.json

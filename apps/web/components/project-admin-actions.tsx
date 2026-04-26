@@ -3,19 +3,32 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function ProjectAdminActions({ slug }: { slug: string }) {
-  const [isAdmin, setIsAdmin] = useState(false);
+// Shows the Delete button if the viewer is the project owner OR an admin.
+// The parent page already knows owner_uid from getProject; we pass it in
+// rather than re-fetching per project.
+export function ProjectAdminActions({
+  slug,
+  ownerUid,
+}: {
+  slug: string;
+  ownerUid: string | null;
+}) {
+  const [canDelete, setCanDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
-      .then((d) => setIsAdmin(d.user?.role === "admin"))
+      .then((d) => {
+        const uid = d.user?.id;
+        const role = d.user?.role;
+        setCanDelete(role === "admin" || (uid != null && uid === ownerUid));
+      })
       .catch(() => {});
-  }, []);
+  }, [ownerUid]);
 
-  if (!isAdmin) return null;
+  if (!canDelete) return null;
 
   async function handleDelete() {
     if (

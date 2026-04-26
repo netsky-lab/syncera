@@ -1,30 +1,48 @@
 # Research Lab — REST API
 
-External consumers (other apps, agents, scripts) read research artifacts
-from this instance through a JSON API. Human browsers still use Basic Auth;
-programmatic clients use API keys.
+External consumers read research artifacts and orchestrate runs through
+this JSON API. The canonical machine-readable spec is
+`/api/openapi.json` (OpenAPI 3.1) — this doc is a hand-written
+overview for humans.
 
 ## Auth
 
-Send your key in either:
+Three accepted credentials:
 
 ```
-X-API-Key: <your_key>
+X-API-Key: <raw_key>
+Authorization: Bearer <raw_key>
+Cookie: rl_session=<hmac-signed-session>   (browser UI, set by /api/auth/login)
 ```
 
-or
+Mint API keys at `/settings` → API keys once signed in as admin. Keys
+are SHA-256 hashed on disk; the raw value is shown exactly once on
+creation. `API_KEYS` in `deploy/.env` still works as a comma-separated
+bootstrap set for the first admin to log in.
 
-```
-Authorization: Bearer <your_key>
-```
+Rate limited to 60 req/min per identity (tunable via
+`API_RATE_LIMIT_PER_MIN`). CORS is permissive by default — pin to your
+consumer origin via `API_CORS_ORIGINS`.
 
-The server accepts Basic Auth on `/api/*` too (same credentials as the
-browser UI) so a cookie-authed session works. For machine clients use
-API keys — rotate by editing `deploy/.env` and re-starting the container.
+## Auth endpoints (browser UI)
 
-Configure accepted keys via `API_KEYS` in `deploy/.env`
-(comma-separated). If both `BASIC_AUTH_PASS` and `API_KEYS` are unset,
-the auth gate is fully disabled (dev mode).
+- `POST /api/auth/signup` — create account. First signup becomes admin;
+  subsequent require `ALLOW_SIGNUP=1`.
+- `POST /api/auth/login` — email + password → Set-Cookie `rl_session`.
+- `POST /api/auth/logout` — clear the cookie.
+- `GET  /api/auth/me` — current user or `{user: null}`.
+- `POST /api/auth/password` — change own password (requires session).
+
+## Admin endpoints (admin role required)
+
+- `GET/POST /api/admin/users` — list / invite. Delete via
+  `DELETE /api/admin/users/:id` (guarded against self-delete and
+  removing the last admin).
+- `GET/POST /api/admin/keys` — list / mint. Revoke via
+  `DELETE /api/admin/keys/:id`.
+
+These are session-only — API keys cannot mint more keys or add users,
+to contain blast radius on a leaked key.
 
 ## Endpoints
 
@@ -160,8 +178,9 @@ Response format:
 
 ### GET `/api/projects/:slug/pdf`
 
-Returns a PDF binary. Requires Basic Auth or API key. Playwright renders
-the `/projects/:slug/print` page under auth.
+Returns a PDF binary. Accepts any of the three credentials (session
+cookie / API key / Bearer). Playwright renders the
+`/projects/:slug/print` page under the same auth context.
 
 ### POST `/api/runs/start`
 

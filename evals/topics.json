@@ -1,0 +1,197 @@
+{
+  "description": "Eval set: 10 research topics spanning LLM infra, interpretability, and domains where the correct answer has a stable literature signal. Each entry lists `expected_concepts` (required substrings — case-insensitive, scored by presence in REPORT.md) and `expected_contradictions` (known disagreements in the literature; scored by whether the report surfaces them).",
+  "topics": [
+    {
+      "id": "eval-01-kv-cache",
+      "topic": "How to compress KV-cache to fit Qwen3.6-35B-A3B model into 4 GPU slots on RTX 5090 using TurboQuant or similar quantization methods",
+      "domain": "LLM inference infrastructure",
+      "expected_concepts": [
+        "TurboQuant",
+        "KIVI",
+        "KVQuant",
+        "AWQ",
+        "GPTQ",
+        "per-channel",
+        "per-token",
+        "group size",
+        "outlier",
+        "FP8"
+      ],
+      "expected_contradictions": [
+        "TurboQuant vs KIVI accuracy trade-off at 3 bits"
+      ],
+      "notes": "Known literature: TurboQuant (2024), KIVI (ICML 2024), KVQuant (arxiv 2401). Expect mentions of KV memory footprint arithmetic."
+    },
+    {
+      "id": "eval-02-rlhf-vs-dpo",
+      "topic": "RLHF vs DPO for preference alignment of 7B-13B language models — sample efficiency, reward hacking, and downstream task quality",
+      "domain": "alignment methods",
+      "expected_concepts": [
+        "DPO",
+        "RLHF",
+        "PPO",
+        "reward model",
+        "KL penalty",
+        "preference dataset",
+        "reward hacking",
+        "sample efficiency",
+        "Bradley-Terry"
+      ],
+      "expected_contradictions": [
+        "DPO stability vs PPO: some reports show DPO collapses on smaller models, others don't"
+      ],
+      "notes": "Rafailov 2023 DPO paper + subsequent studies (Pal 2024, Tang 2024 on DPO instability)"
+    },
+    {
+      "id": "eval-03-interp-probing",
+      "topic": "Sparse autoencoders for language model feature extraction — training stability, feature interpretability metrics, scaling laws",
+      "domain": "mechanistic interpretability",
+      "expected_concepts": [
+        "sparse autoencoder",
+        "L0",
+        "L1 penalty",
+        "feature death",
+        "dictionary size",
+        "top-k",
+        "Anthropic",
+        "scaling laws"
+      ],
+      "expected_contradictions": [
+        "TopK vs L1 trade-off: dead neurons vs reconstruction loss"
+      ],
+      "notes": "Cunningham 2023, Templeton 2024 (Anthropic), Gao 2024 (OpenAI)"
+    },
+    {
+      "id": "eval-04-lora-scaling",
+      "topic": "Comparison of LoRA, QLoRA, DoRA, and full fine-tuning on 70B models for domain adaptation — VRAM footprint, task degradation, inference latency impact",
+      "domain": "parameter-efficient fine-tuning",
+      "expected_concepts": [
+        "LoRA",
+        "QLoRA",
+        "DoRA",
+        "rank",
+        "alpha",
+        "4-bit quantization",
+        "NF4",
+        "forgetting",
+        "task degradation"
+      ],
+      "expected_contradictions": [
+        "DoRA improvement over LoRA is method-specific vs universal"
+      ],
+      "notes": "Hu 2021 LoRA, Dettmers 2023 QLoRA, Liu 2024 DoRA"
+    },
+    {
+      "id": "eval-05-flash-attention",
+      "topic": "FlashAttention vs FlashAttention-2 vs FlashAttention-3 — memory layout, numerical precision trade-offs, applicability to different attention patterns",
+      "domain": "attention kernels",
+      "expected_concepts": [
+        "FlashAttention",
+        "IO-aware",
+        "tiling",
+        "online softmax",
+        "backward pass",
+        "FP16",
+        "BF16",
+        "FP8",
+        "Hopper",
+        "H100"
+      ],
+      "expected_contradictions": [],
+      "notes": "Dao 2022 FA1, Dao 2023 FA2, Shah 2024 FA3"
+    },
+    {
+      "id": "eval-06-retrieval-reranking",
+      "topic": "Cross-encoder rerankers vs late-interaction models (ColBERT) for dense retrieval — relevance quality, latency, index size trade-offs",
+      "domain": "information retrieval",
+      "expected_concepts": [
+        "cross-encoder",
+        "ColBERT",
+        "late interaction",
+        "MRR",
+        "nDCG",
+        "BEIR",
+        "MS MARCO",
+        "bi-encoder",
+        "pooling"
+      ],
+      "expected_contradictions": [],
+      "notes": "Khattab 2020 ColBERT, Santhanam 2022 ColBERTv2"
+    },
+    {
+      "id": "eval-07-cosmetic-sunscreen",
+      "topic": "Photostability of Ethylhexyl Methoxycinnamate (Octinoxate) in cosmetic sunscreen formulations — degradation kinetics under UV, mitigation via photostabilizers",
+      "domain": "cosmetic chemistry",
+      "expected_concepts": [
+        "Ethylhexyl Methoxycinnamate",
+        "Octinoxate",
+        "Uvinul",
+        "DHHB",
+        "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+        "SPF",
+        "UVA",
+        "UVB",
+        "photodegradation"
+      ],
+      "expected_contradictions": [
+        "Vitamin E as photostabilizer: some trials show it accelerates degradation"
+      ],
+      "notes": "Covers Ольга's domain — stress test for off-domain drift"
+    },
+    {
+      "id": "eval-08-battery-lifetime",
+      "topic": "Lithium-ion battery calendar aging at 80% state of charge vs 40% — capacity fade mechanisms, temperature dependence, actionable storage guidelines for consumer devices",
+      "domain": "electrochemistry",
+      "expected_concepts": [
+        "calendar aging",
+        "SEI",
+        "solid electrolyte interphase",
+        "state of charge",
+        "Arrhenius",
+        "capacity fade",
+        "cycle life",
+        "depth of discharge"
+      ],
+      "expected_contradictions": [],
+      "notes": "Well-studied, expect high coverage and low hallucination"
+    },
+    {
+      "id": "eval-09-speculative-decoding",
+      "topic": "Speculative decoding for LLM inference — draft model selection, acceptance rates, speedup ceilings on different hardware",
+      "domain": "LLM inference",
+      "expected_concepts": [
+        "speculative decoding",
+        "draft model",
+        "acceptance rate",
+        "target model",
+        "EAGLE",
+        "Medusa",
+        "tree attention",
+        "memory bandwidth"
+      ],
+      "expected_contradictions": [
+        "Speedup ceiling is arithmetic vs memory-bound depending on hardware"
+      ],
+      "notes": "Leviathan 2023, Cai 2024 Medusa, Li 2024 EAGLE-2"
+    },
+    {
+      "id": "eval-10-context-extension",
+      "topic": "Extending context length of pretrained LLMs — YaRN, RoPE scaling, position interpolation — perplexity preservation and long-context benchmark behavior",
+      "domain": "LLM architecture",
+      "expected_concepts": [
+        "RoPE",
+        "rotary position embedding",
+        "position interpolation",
+        "YaRN",
+        "NTK",
+        "base frequency",
+        "needle-in-haystack",
+        "perplexity"
+      ],
+      "expected_contradictions": [
+        "Needle-in-haystack passes but downstream task quality drops — unresolved"
+      ],
+      "notes": "Chen 2023 PI, Peng 2023 YaRN, Xiong 2023"
+    }
+  ]
+}

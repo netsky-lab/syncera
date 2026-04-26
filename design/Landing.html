@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Research Lab — Verifiable research at the speed of a query</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="landing.css">
+</head>
+<body class="l-body">
+
+<!-- NAV -->
+<nav class="l-nav">
+  <div class="brand">
+    <div class="ws-logo">R</div>
+    Research Lab
+  </div>
+  <div class="links">
+    <a>Pipeline</a>
+    <a>Verification</a>
+    <a>Sources</a>
+    <a>Docs</a>
+    <a>Pricing</a>
+  </div>
+  <div class="spacer"></div>
+  <div class="right">
+    <div class="signin">Sign in</div>
+    <a class="cta" href="Research Lab.html">
+      Open the Lab
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    </a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="l-wrap l-hero">
+  <div class="mini">
+    <span class="d"></span>
+    <span>v0.4 · pipeline live · 1.8M claims verified this month</span>
+  </div>
+  <h1>
+    Verifiable research<br>
+    at the <em>speed of a</em> <span class="acc">query.</span>
+  </h1>
+  <p class="sub">
+    Research Lab runs an open, inspectable pipeline from raw query to peer-verified brief.
+    Every claim ships with its source, its verdict, and the exact prompt that produced it —
+    <strong>no hallucinated citations, no black boxes.</strong>
+  </p>
+
+  <div class="actions">
+    <a class="btn-primary" href="Research Lab.html">
+      Run your first investigation
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    </a>
+    <button class="btn-secondary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Watch 90-second demo
+      <span class="kbd">D</span>
+    </button>
+  </div>
+
+  <div class="proof">
+    <div><strong>42 research teams</strong> shipping with it</div>
+    <div class="bar"></div>
+    <div>Arxiv · OpenAlex · SearXNG · PubMed · Semantic Scholar</div>
+    <div class="bar"></div>
+    <div>SOC-2 in flight</div>
+  </div>
+
+  <!-- LIVE PIPELINE -->
+  <div class="l-preview">
+    <div class="head">
+      <div class="label"><span class="dot"></span>Live pipeline · run #4217</div>
+      <div class="topic">Topic → <span class="q">"Does niacinamide reduce transepidermal water loss?"</span></div>
+    </div>
+    <div class="track" id="pipeline">
+      <div class="line"></div>
+      <div class="prog" id="pipe-prog" style="width:0"></div>
+
+      <div class="stage" data-step="0">
+        <div class="node">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <div class="num">01 · PLAN</div>
+        <div class="name">Decompose</div>
+        <div class="desc">LLM splits query into 4–12 sub-questions</div>
+        <div class="log">→ 7 sub-queries</div>
+      </div>
+
+      <div class="stage" data-step="1">
+        <div class="node">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6l2 3h8v13H4z"/></svg>
+        </div>
+        <div class="num">02 · FETCH</div>
+        <div class="name">Retrieve</div>
+        <div class="desc">Arxiv + OpenAlex + SearXNG in parallel</div>
+        <div class="log">→ <span id="fetch-c">0</span> papers</div>
+      </div>
+
+      <div class="stage" data-step="2">
+        <div class="node">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="14" x2="15" y2="14"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        </div>
+        <div class="num">03 · EXTRACT</div>
+        <div class="name">Claim mining</div>
+        <div class="desc">Atomic factual claims w/ doc anchors</div>
+        <div class="log">→ <span id="extract-c">0</span> claims</div>
+      </div>
+
+      <div class="stage" data-step="3">
+        <div class="node">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="num">04 · VERIFY</div>
+        <div class="name">Cross-check</div>
+        <div class="desc">Each claim validated against ≥ 2 sources</div>
+        <div class="log">→ <span id="verify-c">0</span>/96 done</div>
+      </div>
+
+      <div class="stage" data-step="4">
+        <div class="node">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        </div>
+        <div class="num">05 · SYNTH</div>
+        <div class="name">Synthesize</div>
+        <div class="desc">Assemble into a cited narrative</div>
+        <div class="log muted">waiting…</div>
+      </div>
+
+      <div class="stage" data-step="5">
+        <div class="node">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </div>
+        <div class="num">06 · SHIP</div>
+        <div class="name">Deliver</div>
+        <div class="desc">MD / PDF / JSON-LD + audit trail</div>
+        <div class="log muted">waiting…</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROBLEM -->
+<section class="l-section">
+  <div class="l-wrap">
+    <div class="kicker">The problem</div>
+    <h2>LLMs are <em>fast.</em> LLMs are also confidently wrong about half of what they cite.</h2>
+    <p class="lede">Most "AI research" tools are a single LLM pretending to read papers. Hallucinated citations, missing sources, zero audit trail. You end up re-doing the work in 3× the time.</p>
+
+    <div class="l-prob-grid">
+      <div class="l-prob">
+        <div class="tag">BROKEN</div>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/></svg></div>
+        <h3>Fabricated citations</h3>
+        <p>ChatGPT-style tools invent DOIs that look plausible but point to nothing. You only notice when you try to click.</p>
+      </div>
+      <div class="l-prob">
+        <div class="tag">BROKEN</div>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg></div>
+        <h3>Black-box synthesis</h3>
+        <p>"Trust us, we read 40 papers" — with no visible chain from claim → passage → source. Impossible to audit, impossible to debug.</p>
+      </div>
+      <div class="l-prob">
+        <div class="tag">BROKEN</div>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+        <h3>One-shot outputs</h3>
+        <p>A single LLM call with no verification loop. Every contradiction stays hidden, every nuance gets flattened into the averagiest take.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="l-section">
+  <div class="l-wrap">
+    <div class="kicker">How it works</div>
+    <h2>Six stages. Each one <em>inspectable,</em> <em>reproducible,</em> and cheap to replay.</h2>
+    <p class="lede">Every run is a DAG of small, deterministic tasks. Fail a step, rerun just that step. Change a model, diff the outputs. No magic.</p>
+
+    <div class="how-grid">
+      <div class="how-cell">
+        <div class="tick">01 · PLAN</div>
+        <h4><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>Decompose</h4>
+        <p>Planner LLM splits the query into 4–12 sub-questions, each scoped and typed.</p>
+        <div class="artefact"><span class="k">out →</span> plan.json</div>
+      </div>
+      <div class="how-cell">
+        <div class="tick">02 · FETCH</div>
+        <h4><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6l2 3h8v13H4z"/></svg></span>Retrieve</h4>
+        <p>Parallel search across Arxiv, OpenAlex, SearXNG, PubMed. Ranked, deduped, cached.</p>
+        <div class="artefact"><span class="k">out →</span> 200–600 docs</div>
+      </div>
+      <div class="how-cell">
+        <div class="tick">03 · EXTRACT</div>
+        <h4><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>Claim mining</h4>
+        <p>Atomic factual claims with passage-level anchors. Every claim is a citable unit.</p>
+        <div class="artefact"><span class="k">out →</span> claims.jsonl</div>
+      </div>
+      <div class="how-cell">
+        <div class="tick">04 · VERIFY</div>
+        <h4><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></span>Cross-check</h4>
+        <p>Each claim runs through an NLI verifier against ≥ 2 independent sources.</p>
+        <div class="artefact"><span class="k">out →</span> verdict + confidence</div>
+      </div>
+      <div class="how-cell">
+        <div class="tick">05 · SYNTH</div>
+        <h4><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><polyline points="2 17 12 22 22 17"/></svg></span>Synthesize</h4>
+        <p>Verified claims only. Citations inlined. Contradictions surfaced, not hidden.</p>
+        <div class="artefact"><span class="k">out →</span> brief.md</div>
+      </div>
+      <div class="how-cell">
+        <div class="tick">06 · SHIP</div>
+        <h4><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>Deliver</h4>
+        <p>Export as Markdown, PDF, or JSON-LD. Audit trail bundled, replay-able anytime.</p>
+        <div class="artefact"><span class="k">out →</span> brief.pdf + trace.jsonl</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- VERIFICATION SPOTLIGHT -->
+<section class="l-section">
+  <div class="l-wrap">
+    <div class="kicker">Verification, up close</div>
+    <div class="l-split">
+      <div class="copy">
+        <h3>Every claim ships with a verdict. Not a vibe.</h3>
+        <p>Our NLI verifier runs each atomic claim against all retrieved passages and returns one of four outcomes. The full evidence list is attached — you can click any claim in the brief and jump straight to the supporting passage.</p>
+        <ul>
+          <li><span class="mk">●</span><strong>SUPPORTED</strong><span>≥ 2 sources, no contradicting evidence</span></li>
+          <li><span class="mk part">●</span><strong>PARTIAL</strong><span>Supported with qualifications the brief will surface</span></li>
+          <li><span class="mk no">●</span><strong>CONTRADICTED</strong><span>At least one source disagrees — flagged, not dropped</span></li>
+          <li><span class="mk">○</span><strong>UNSUPPORTED</strong><span>No evidence found — removed from the brief</span></li>
+        </ul>
+      </div>
+      <div class="verify-demo">
+        <div class="row">
+          <div class="num">#042</div>
+          <div>
+            <div class="claim">Niacinamide at 5% reduces TEWL by 24% over 4 weeks.</div>
+            <div class="src">Hakozaki 2002 · Bissett 2004</div>
+          </div>
+          <div class="vr ok">✓ SUPPORTED</div>
+        </div>
+        <div class="row">
+          <div class="num">#043</div>
+          <div>
+            <div class="claim">Effect size is comparable across Fitzpatrick skin types.</div>
+            <div class="src">Navarrete-Solis 2011 only</div>
+          </div>
+          <div class="vr part">~ PARTIAL</div>
+        </div>
+        <div class="row">
+          <div class="num">#044</div>
+          <div>
+            <div class="claim">Topical niacinamide penetrates the stratum corneum in &lt; 10 min.</div>
+            <div class="src">Gehring 2004 vs Tanno 2000</div>
+          </div>
+          <div class="vr contra">✗ CONTRADICTED</div>
+        </div>
+        <div class="row">
+          <div class="num">#045</div>
+          <div>
+            <div class="claim">Reduces sebum production independent of ceramide pathway.</div>
+            <div class="src">Draelos 2006 · Walocko 2017</div>
+          </div>
+          <div class="vr ok">✓ SUPPORTED</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SOURCES -->
+<section class="l-section">
+  <div class="l-wrap">
+    <div class="kicker">Sources</div>
+    <h2>Indexes that <em>actually</em> cover research.</h2>
+    <p class="lede">We query open indexes in parallel and merge results with deduplication and cross-source ranking. No scraping, no grey sources.</p>
+
+    <div class="src-grid">
+      <div class="src-card arxiv">
+        <div class="tag">ax</div>
+        <h4>Arxiv</h4>
+        <p>Preprints across CS, physics, quantitative bio. Native PDF + LaTeX source parsed for equations and figure captions.</p>
+        <div class="stat"><span><span class="k">covers</span> 2.4M papers</span><span><span class="k">latency</span> 1.2s p95</span></div>
+      </div>
+      <div class="src-card openalex">
+        <div class="tag">oa</div>
+        <h4>OpenAlex</h4>
+        <p>Full open scholarly graph. Citation counts, author networks, venue metadata — the closest thing to a universal DOI resolver.</p>
+        <div class="stat"><span><span class="k">covers</span> 260M works</span><span><span class="k">latency</span> 0.8s p95</span></div>
+      </div>
+      <div class="src-card searxng">
+        <div class="tag">sx</div>
+        <h4>SearXNG</h4>
+        <p>Federated web search for grey literature — preprints, institutional PDFs, technical reports. Filtered + PDF-extracted inline.</p>
+        <div class="stat"><span><span class="k">covers</span> the open web</span><span><span class="k">latency</span> 2.1s p95</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SPEC STRIP -->
+<section class="l-section">
+  <div class="l-wrap">
+    <div class="kicker">Numbers</div>
+    <h2>Built for the long-tail <em>daily driver</em> workflow.</h2>
+    <p class="lede">No rate-limit surprises. No "exceeded tokens". Pricing is flat per verified investigation, not per LLM call.</p>
+
+    <div class="spec-strip">
+      <div class="spec">
+        <div class="k">Median run</div>
+        <div class="v">4.2<span class="unit">min</span></div>
+        <div class="d">Query → verified brief, end-to-end.</div>
+      </div>
+      <div class="spec">
+        <div class="k">Claims / run</div>
+        <div class="v">112<span class="unit">avg</span></div>
+        <div class="d">Atomic, citable, each with a verdict.</div>
+      </div>
+      <div class="spec">
+        <div class="k">Hallucination rate</div>
+        <div class="v">0.3<span class="unit">%</span></div>
+        <div class="d">vs 21% baseline for LLM-only tools.</div>
+      </div>
+      <div class="spec">
+        <div class="k">Replay cost</div>
+        <div class="v">~0<span class="unit">¢</span></div>
+        <div class="d">All artefacts cached; re-synth is free.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- OUTPUT SHOWCASE -->
+<section class="l-section">
+  <div class="l-wrap">
+    <div class="kicker">The output</div>
+    <h2 style="text-align:center;margin-left:auto;margin-right:auto;">What you actually get.</h2>
+    <p class="lede" style="text-align:center;margin-left:auto;margin-right:auto;">A clean brief, inline cites, and a full trace. Here's a real excerpt.</p>
+
+    <div class="paper-frame">
+      <div class="paper-head">brief.md · run #4217 · 4 min 12 s · 7 subq · 287 sources</div>
+      <h5>Does niacinamide reduce transepidermal water loss?</h5>
+      <div class="meta">98 verified claims · 14 contradicted · confidence 0.87</div>
+
+      <div class="section-label">Summary</div>
+      <p>Topical niacinamide at concentrations between 2% and 5% measurably reduces transepidermal water loss (TEWL) over a treatment window of 4–8 weeks<span class="cite">[42]</span><span class="cite">[51]</span>. The effect is mediated primarily through upregulation of ceramide and free fatty acid synthesis in the stratum corneum<span class="cite">[47]</span>, though contradicting evidence exists for penetration kinetics<span class="cite">[44]</span>.</p>
+
+      <div class="section-label">Key qualifiers</div>
+      <p>Effect size varies across Fitzpatrick skin types I–VI — only one trial reports stratified data<span class="cite">[43]</span>. Formulation matters: emulsion-based vehicles outperform aqueous by ~1.4× on the same concentration<span class="cite">[52]</span>.</p>
+
+      <div class="footnote">[42] Hakozaki T et al. (2002) Br J Dermatol · [43] Navarrete-Solis J et al. (2011) · [44] Gehring 2004 &nbsp;vs&nbsp; Tanno 2000 (contradicted) · [47] Bissett 2004 · [51] Walocko 2017 · [52] Draelos 2006</div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="l-section">
+  <div class="l-wrap">
+    <div class="kicker">FAQ</div>
+    <h2>Questions <em>smart teams</em> ask first.</h2>
+    <div class="l-faq">
+      <details open>
+        <summary>How is this different from Perplexity / Elicit / You.com?</summary>
+        <div class="ans">Those are query-in, answer-out. We're query-in, <em>traceable DAG</em>-out. Every stage's input, output, and prompt is stored and replay-able. You can fork any run, swap a model at stage 4, and diff the result. Think CI/CD for research.</div>
+      </details>
+      <details>
+        <summary>Can I bring my own sources?</summary>
+        <div class="ans">Yes — any retriever with a search endpoint (Elasticsearch, Weaviate, internal wiki, S3 bucket of PDFs). Bring your own index and point us at it.</div>
+      </details>
+      <details>
+        <summary>What about confidential / internal data?</summary>
+        <div class="ans">Self-hostable. The whole pipeline runs on-prem with your own model endpoints. We ship a Helm chart and a Terraform module.</div>
+      </details>
+      <details>
+        <summary>Which LLMs do you use?</summary>
+        <div class="ans">Claude Sonnet for planning + synthesis, a fine-tuned NLI model for verification, an OSS extractor for claim mining. You can swap any of them via config.</div>
+      </details>
+      <details>
+        <summary>Pricing?</summary>
+        <div class="ans">$29 / seat / month for the hosted version, flat. Self-hosted is priced by org, contact us. No per-query billing, no token-metering surprises.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="l-wrap">
+  <div class="l-final">
+    <div class="kicker" style="margin-bottom:20px">Ready?</div>
+    <h2>Stop copy-pasting <em>into</em> ChatGPT.<br>Start <span style="color:var(--accent)">shipping briefs out of</span> Research Lab.</h2>
+    <p class="sub">Free during beta. Your first 10 investigations on us. No card, no sales call.</p>
+    <div class="actions">
+      <a class="btn-primary" href="Research Lab.html" style="padding:13px 22px;border-radius:9px;background:var(--accent);color:#1a1108;font-weight:600;font-size:14.5px;display:inline-flex;align-items:center;gap:8px;">
+        Open the Lab
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+      <button class="btn-secondary" style="padding:13px 18px;border-radius:9px;background:transparent;color:var(--fg);border:1px solid var(--line-2);font-weight:500;font-size:14.5px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
+        Read the docs
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="l-footer">
+  <div class="l-wrap">
+    <div class="row">
+      <div class="col brand-col">
+        <div class="brand"><div class="ws-logo">R</div>Research Lab</div>
+        <p>Open, inspectable research infrastructure. Build your own briefs, trust your own sources.</p>
+      </div>
+      <div class="col">
+        <h6>Product</h6>
+        <a>Pipeline</a><a>Verification</a><a>Sources</a><a>Exports</a><a>Self-hosted</a>
+      </div>
+      <div class="col">
+        <h6>Developers</h6>
+        <a>Docs</a><a>API reference</a><a>Changelog</a><a>GitHub</a><a>Status</a>
+      </div>
+      <div class="col">
+        <h6>Company</h6>
+        <a>About</a><a>Blog</a><a>Careers</a><a>Security</a><a>Contact</a>
+      </div>
+    </div>
+    <div class="bottom">
+      <div>© 2026 Research Lab · questrov-first</div>
+      <div>v0.4.2 · built in Yerevan</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* Live pipeline animation */
+(function(){
+  const stages = document.querySelectorAll('#pipeline .stage');
+  const prog = document.getElementById('pipe-prog');
+  const fetchC = document.getElementById('fetch-c');
+  const extractC = document.getElementById('extract-c');
+  const verifyC = document.getElementById('verify-c');
+  const total = stages.length;
+  let active = 0;
+  const targets = [0, 287, 412, 96];
+  const current = [0, 0, 0, 0];
+
+  function setStages(i){
+    stages.forEach((s, idx) => {
+      s.classList.remove('active', 'done');
+      if (idx < i) s.classList.add('done');
+      if (idx === i) s.classList.add('active');
+    });
+    const pct = (i + 0.5) / total;
+    prog.style.width = `calc(${pct * 100}% - ${48 * (1 - pct)}px)`;
+  }
+
+  function tween(name, from, to, dur, fmt){
+    const el = { fetch: fetchC, extract: extractC, verify: verifyC }[name];
+    if (!el) return Promise.resolve();
+    const start = performance.now();
+    return new Promise(res => {
+      function frame(now){
+        const t = Math.min(1, (now - start) / dur);
+        const v = Math.round(from + (to - from) * (1 - Math.pow(1 - t, 3)));
+        el.textContent = fmt ? fmt(v) : v;
+        if (t < 1) requestAnimationFrame(frame); else res();
+      }
+      requestAnimationFrame(frame);
+    });
+  }
+
+  async function cycle(){
+    while (true){
+      setStages(0);
+      await new Promise(r => setTimeout(r, 1200));
+      setStages(1);
+      await tween('fetch', 0, 287, 2200);
+      await new Promise(r => setTimeout(r, 400));
+      setStages(2);
+      await tween('extract', 0, 412, 1800);
+      await new Promise(r => setTimeout(r, 400));
+      setStages(3);
+      await tween('verify', 0, 96, 2400);
+      await new Promise(r => setTimeout(r, 600));
+      setStages(4);
+      await new Promise(r => setTimeout(r, 1400));
+      setStages(5);
+      await new Promise(r => setTimeout(r, 1600));
+      // reset
+      fetchC.textContent = '0'; extractC.textContent = '0'; verifyC.textContent = '0';
+      await new Promise(r => setTimeout(r, 800));
+    }
+  }
+  cycle();
+})();
+</script>
+
+</body>
+</html>

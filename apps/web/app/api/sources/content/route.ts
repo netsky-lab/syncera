@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
+import { requireAuth } from "@/lib/auth";
 
 const PROJECTS_DIR = join(process.cwd(), "..", "..", "projects");
 
@@ -14,6 +15,9 @@ function hashUrl(url: string): string {
 }
 
 export async function GET(request: Request) {
+  const auth = requireAuth(request);
+  if (!auth.ok) return auth.response;
+
   const url = new URL(request.url);
   const slug = url.searchParams.get("slug");
   const sourceUrl = url.searchParams.get("url");

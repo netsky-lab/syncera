@@ -1,10 +1,10 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Dashboard", () => {
-  test("sidebar shows Research Lab brand", async ({ page }) => {
+  test("sidebar shows Syncera brand", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("Research Lab").first()).toBeVisible();
-    await expect(page.getByText("hypothesis-driven").first()).toBeVisible();
+    await expect(page.getByText("Syncera").first()).toBeVisible();
+    await expect(page.getByText("question-first").first()).toBeVisible();
   });
 
   test("dashboard shows Projects heading and stats row", async ({ page }) => {

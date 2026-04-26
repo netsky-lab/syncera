@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { SectionTweak } from "@/components/section-tweak";
+import { Markdown } from "@/components/markdown";
 
 // Question-first reading-mode layout: single prose column + sticky TOC.
 // Inspired by Perplexity Pro / ChatGPT Deep Research / arxiv HTML v2 —
@@ -21,20 +23,78 @@ type Project = {
   verification: any;
 };
 
+// Extract plausible INCI / ingredient list items from a topic string.
+// Triggers only if the topic looks like an ingredient list (3+ comma- or
+// slash-separated items where each is multi-word & has capital letters).
+// Returns names sorted longest-first so regex replacement doesn't
+// partial-match a shorter name inside a longer one ("Zea mays starch"
+// before "Zea mays").
+function extractIngredients(topic: string | undefined | null): string[] {
+  if (!topic) return [];
+  const candidates = topic
+    .split(/[,\n]|\s\/\s|\//)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 3 && s.length <= 80)
+    .map((s) => s.replace(/^\W+|\W+$/g, ""))
+    .filter((s) => /[A-Z]/.test(s))
+    .filter((s) => !/[?!:;]/.test(s))
+    .filter((s) => s.split(/\s+/).length <= 6);
+  // Keep only if we have at least 4 plausible INCI items — otherwise the
+  // topic is probably a regular sentence, not an ingredient list.
+  if (candidates.length < 4) return [];
+  const uniq = Array.from(new Set(candidates));
+  uniq.sort((a, b) => b.length - a.length);
+  return uniq;
+}
+
+// Wrap occurrences of `ingredients` in `text` with **bold** markdown-ish
+// spans. Returns an array of React nodes. Preserves content between hits.
+function boldIngredients(text: string, ingredients: string[]): React.ReactNode[] {
+  if (ingredients.length === 0) return [text];
+  // Build a single regex matching any ingredient (longest first — set
+  // above). Escape regex specials in each name.
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(${ingredients.map(esc).join("|")})`, "gi");
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = pattern.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(
+      <strong
+        key={`ing-${key++}`}
+        className="text-fg font-semibold"
+      >
+        {m[0]}
+      </strong>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 function FactCitations({
   text,
   factMap,
+  ingredients,
 }: {
   text: string;
   factMap?: Map<string, any>;
+  ingredients?: string[];
 }) {
+  const ings = ingredients ?? [];
   // Split text into runs, wrap [F#] tokens with scroll-to-fact anchors.
   const parts = text.split(/(\[F\d+(?:,\s*F\d+)*\])/g);
   return (
     <>
       {parts.map((part, i) => {
         const match = part.match(/^\[(F\d+(?:,\s*F\d+)*)\]$/);
-        if (!match) return <span key={i}>{part}</span>;
+        if (!match) {
+          if (ings.length === 0) return <span key={i}>{part}</span>;
+          return <span key={i}>{boldIngredients(part, ings)}</span>;
+        }
         const ids = match[1]!.split(/,\s*/);
         return (
           <span key={i} className="inline-flex gap-0.5 align-baseline">
@@ -159,22 +219,22 @@ function CoverageBadge({ coverage }: { coverage: string }) {
   const map: Record<string, { label: string; cls: string }> = {
     complete: {
       label: "Complete",
-      cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+      cls: "bg-accent-sage/15 text-accent-sage border-accent-sage/30",
     },
     partial: {
       label: "Partial",
-      cls: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+      cls: "bg-accent-amber/15 text-accent-amber border-accent-amber/30",
     },
     gaps_critical: {
       label: "Gaps",
-      cls: "bg-orange-500/15 text-orange-300 border-orange-500/30",
+      cls: "bg-accent-rust/15 text-accent-rust border-accent-rust/30",
     },
     insufficient: {
       label: "Insufficient",
-      cls: "bg-red-500/15 text-red-300 border-red-500/30",
+      cls: "bg-accent-red/15 text-accent-red border-accent-red/30",
     },
   };
-  const m = map[coverage] ?? { label: coverage, cls: "bg-muted text-muted-foreground" };
+  const m = map[coverage] ?? { label: coverage, cls: "bg-ink-700 text-fg-muted" };
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide border ${m.cls}`}
@@ -186,10 +246,10 @@ function CoverageBadge({ coverage }: { coverage: string }) {
 
 function FactualityBadge({ f }: { f: string }) {
   const map: Record<string, string> = {
-    quantitative: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-    qualitative: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-    comparative: "bg-sky-500/10 text-sky-400 border-sky-500/20",
-    background: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+    quantitative: "bg-accent-sage/10 text-accent-sage border-accent-sage/20",
+    qualitative: "bg-accent-amber/10 text-accent-amber border-accent-amber/20",
+    comparative: "bg-accent-primary/10 text-accent-primary border-accent-primary/20",
+    background: "bg-ink-700 text-fg-muted border-fg/[0.08]",
   };
   return (
     <span
@@ -206,33 +266,34 @@ function QuestionSection({
   facts,
   verMap,
   factMap,
+  ingredients,
 }: {
   q: any;
   answer: any;
   facts: any[];
   verMap: Map<string, any>;
   factMap: Map<string, any>;
+  ingredients: string[];
 }) {
   const [showAllFacts, setShowAllFacts] = useState(false);
   const questionFacts = facts.filter((f) => f.question_id === q.id);
   const shown = showAllFacts ? questionFacts : questionFacts.slice(0, 6);
 
   return (
-    <section id={q.id} className="scroll-mt-8 py-10 border-t border-border/50 first:border-0 first:pt-0">
-      <div className="flex items-start gap-3 mb-3">
-        <span className="font-mono text-[11px] text-muted-foreground pt-1.5">{q.id}</span>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1.5">
-            <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
-              {q.category}
-            </span>
-            {answer && <CoverageBadge coverage={answer.coverage} />}
-          </div>
-          <h2 className="text-xl font-semibold tracking-tight leading-snug text-foreground">
-            {q.question}
-          </h2>
-        </div>
+    <section
+      id={q.id}
+      className="scroll-mt-8 mt-10 first:mt-0 pt-8 first:pt-0 border-t border-ink-600 first:border-0"
+    >
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <span className="font-mono text-[11px] text-fg-muted">{q.id}</span>
+        <span className="font-mono text-[10px] uppercase tracking-widest text-accent-primary">
+          {q.category}
+        </span>
+        {answer && <CoverageBadge coverage={answer.coverage} />}
       </div>
+      <h2 className="text-[20px] md:text-[24px] font-medium tracking-[-0.018em] leading-[1.25] text-fg mb-5 max-w-[720px]">
+        {q.question}
+      </h2>
 
       {q.subquestions?.length > 0 && (
         <details className="mb-4 text-xs">
@@ -254,37 +315,42 @@ function QuestionSection({
       )}
 
       {answer?.answer && (
-        <div className="prose-reader mb-6">
-          <p className="text-[15px] leading-[1.75] text-foreground/90 whitespace-pre-wrap">
-            <FactCitations text={answer.answer} factMap={factMap} />
+        <div className="rl-summary-card mb-5">
+          <p className="whitespace-pre-wrap">
+            <FactCitations text={answer.answer} factMap={factMap} ingredients={ingredients} />
           </p>
         </div>
       )}
 
       {answer?.conflicting_facts?.length > 0 && (
-        <div className="mb-4 p-3 rounded-md border border-red-500/20 bg-red-500/5 space-y-2">
-          <div className="text-[10px] uppercase tracking-widest text-red-300 font-semibold">
-            Conflicting findings ({answer.conflicting_facts.length})
+        <div
+          className="rl-summary-card mb-4 space-y-2"
+          style={{
+            borderColor: "rgba(255, 122, 122, 0.24)",
+            background:
+              "linear-gradient(180deg, rgba(255,122,122,0.05) 0%, var(--ink-800) 60%)",
+          }}
+        >
+          <div className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-accent-red mb-2">
+            Conflicting findings · {answer.conflicting_facts.length}
           </div>
           {answer.conflicting_facts.map((cf: any, i: number) => (
-            <div key={i} className="text-[13px] leading-relaxed">
-              <FactCitations text={`[${cf.fact_a}] vs [${cf.fact_b}] — ${cf.nature}`} factMap={factMap} />
+            <div key={i} className="text-[13.5px] leading-[1.55] text-fg">
+              <FactCitations text={`[${cf.fact_a}] vs [${cf.fact_b}] — ${cf.nature}`} factMap={factMap} ingredients={ingredients} />
             </div>
           ))}
         </div>
       )}
 
       {(answer?.gaps?.length > 0 || answer?.follow_ups?.length > 0) && (
-        <div className="grid sm:grid-cols-2 gap-3 mb-4">
+        <div className="grid sm:grid-cols-2 gap-2.5 mb-4">
           {answer?.gaps?.length > 0 && (
-            <div className="p-3 rounded-md border border-border/60 bg-muted/20 space-y-1.5">
-              <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
-                Gaps
-              </div>
-              <ul className="text-[13px] leading-relaxed text-foreground/80 space-y-1">
+            <div className="rl-kf">
+              <div className="lbl">Gaps</div>
+              <ul className="text-[13px] leading-[1.45] text-fg space-y-1 mt-1">
                 {answer.gaps.map((g: string, i: number) => (
                   <li key={i} className="flex items-start gap-2">
-                    <span className="text-muted-foreground mt-0.5 shrink-0">·</span>
+                    <span className="text-fg-faint mt-0.5 shrink-0">·</span>
                     <span>{g}</span>
                   </li>
                 ))}
@@ -292,14 +358,12 @@ function QuestionSection({
             </div>
           )}
           {answer?.follow_ups?.length > 0 && (
-            <div className="p-3 rounded-md border border-border/60 bg-muted/20 space-y-1.5">
-              <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
-                Follow-ups
-              </div>
-              <ul className="text-[13px] leading-relaxed text-foreground/80 space-y-1">
+            <div className="rl-kf">
+              <div className="lbl">Follow-ups</div>
+              <ul className="text-[13px] leading-[1.45] text-fg space-y-1 mt-1">
                 {answer.follow_ups.map((f: string, i: number) => (
                   <li key={i} className="flex items-start gap-2">
-                    <span className="text-muted-foreground mt-0.5 shrink-0">→</span>
+                    <span className="text-accent-primary mt-0.5 shrink-0">→</span>
                     <span>{f}</span>
                   </li>
                 ))}
@@ -310,17 +374,17 @@ function QuestionSection({
       )}
 
       {questionFacts.length > 0 && (
-        <div className="border-t border-border/50 pt-4 space-y-2">
-          <div className="flex items-baseline justify-between">
-            <h3 className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold">
-              Evidence · {questionFacts.length} facts
-            </h3>
+        <div className="space-y-2">
+          <div className="rl-tl-section-head">
+            <h3>Evidence</h3>
+            <span className="n">{questionFacts.length} facts</span>
+            <div className="line" />
             {questionFacts.length > 6 && (
               <button
                 onClick={() => setShowAllFacts((s) => !s)}
-                className="text-[11px] text-primary hover:underline"
+                className="font-mono text-[11px] text-accent-primary hover:brightness-110"
               >
-                {showAllFacts ? "Show top 6" : `Show all ${questionFacts.length}`}
+                {showAllFacts ? "top 6" : `all ${questionFacts.length}`}
               </button>
             )}
           </div>
@@ -332,47 +396,45 @@ function QuestionSection({
                 <div
                   key={f.id}
                   id={f.id}
-                  className={`flex flex-col sm:flex-row items-start gap-2 sm:gap-3 py-2 px-3 rounded-md border transition-all ${
-                    rejected
-                      ? "opacity-60 border-dashed border-border/50"
-                      : "border-border/50 hover:border-border hover:bg-muted/20"
-                  }`}
+                  className={`rl-claim-card ${rejected ? "opacity-60" : ""}`}
+                  style={rejected ? { borderStyle: "dashed" } : undefined}
                 >
-                  <div className="flex items-center gap-2 sm:hidden w-full justify-between">
-                    <span className="font-mono text-[11px] text-muted-foreground">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <span className="font-mono text-[10.5px] text-fg-faint">
                       {f.id}
                     </span>
-                    <div className="flex items-center gap-1.5 text-[10px]">
-                      <FactualityBadge f={f.factuality} />
-                      <span className="font-mono tabular-nums text-muted-foreground">
-                        {(f.confidence * 100).toFixed(0)}%
-                      </span>
-                    </div>
-                  </div>
-                  <span className="hidden sm:inline font-mono text-[11px] text-muted-foreground shrink-0 pt-0.5 w-10">
-                    {f.id}
-                  </span>
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className={`text-[13px] leading-relaxed ${rejected ? "line-through decoration-zinc-500/60" : ""}`}>
-                      {f.statement}
-                    </div>
-                    {f.references?.[0] && (
-                      <a
-                        href={f.references[0].url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-block text-[11px] text-primary/80 hover:text-primary underline decoration-dotted break-all"
-                      >
-                        {f.references[0].title || f.references[0].url}
-                      </a>
-                    )}
-                  </div>
-                  <div className="hidden sm:flex items-center gap-1.5 shrink-0 text-[10px]">
                     <FactualityBadge f={f.factuality} />
-                    <span className="font-mono tabular-nums text-muted-foreground">
+                    <span className="font-mono text-[10.5px] text-fg-muted tabular-nums">
                       {(f.confidence * 100).toFixed(0)}%
                     </span>
+                    {rejected && (
+                      <span className="rl-claim-verdict fail ml-auto">
+                        ✗ {ver?.verdict ?? "rejected"}
+                      </span>
+                    )}
+                    {!rejected && ver?.verdict === "verified" && (
+                      <span className="rl-claim-verdict ok ml-auto">
+                        ✓ verified
+                      </span>
+                    )}
                   </div>
+                  <div
+                    className={`text-[13.5px] leading-[1.55] text-fg ${
+                      rejected ? "line-through decoration-fg-muted/60" : ""
+                    }`}
+                  >
+                    {f.statement}
+                  </div>
+                  {f.references?.[0] && (
+                    <a
+                      href={f.references[0].url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block mt-2 text-[11.5px] font-mono text-accent-primary hover:brightness-110 underline decoration-dotted break-all"
+                    >
+                      {f.references[0].title || f.references[0].url}
+                    </a>
+                  )}
                 </div>
               );
             })}
@@ -385,8 +447,18 @@ function QuestionSection({
 
 export function ProjectDocument({
   project,
+  slug,
+  canEdit = false,
+  branches,
 }: {
   project: Project;
+  slug?: string;
+  canEdit?: boolean;
+  branches?: {
+    children: any[];
+    parent: any | null;
+    siblings: any[];
+  };
 }) {
   const { plan, facts, analysisReport, report } = project;
   const verMap = new Map<string, any>();
@@ -443,6 +515,15 @@ export function ProjectDocument({
   }
 
   // Facts lookup by id for hover-preview tooltips on citation chips.
+  // Detect INCI-style ingredient lists in the topic and auto-bold each
+  // component everywhere it appears in the prose. Casual users (skincare
+  // formulators) asked for this — scanning a long analysis for "where
+  // did it say what about Niacinamide" is otherwise brutal.
+  const ingredients = useMemo(
+    () => extractIngredients(project.plan?.topic),
+    [project.plan?.topic]
+  );
+
   const factMap = useMemo(
     () => new Map<string, any>(facts.map((f) => [f.id, f])),
     [facts]
@@ -461,38 +542,83 @@ export function ProjectDocument({
   const activeSection = useActiveSection(tocIds);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6 sm:py-8 grid lg:grid-cols-[1fr_15rem] gap-6 lg:gap-12">
-      <article className="max-w-[70ch] min-w-0">
+    <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-6 lg:gap-10 items-start">
+      <article className="min-w-0 max-w-[780px]">
         {intro && (
-          <section className="py-6 border-b border-border/50 mb-2">
-            <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold mb-3">
-              Introduction
-            </h2>
-            <p className="text-[15px] leading-[1.75] text-foreground/90">{intro}</p>
+          <section className="mb-2">
+            <div className="rl-tl-section-head">
+              <h3>Introduction</h3>
+              <div className="line" />
+            </div>
+            {slug ? (
+              <SectionTweak
+                slug={slug}
+                section="introduction"
+                sectionLabel="Introduction"
+                canEdit={canEdit}
+                originalContent={intro}
+              >
+                <div className="rl-summary-card">
+                  <p>{intro}</p>
+                </div>
+              </SectionTweak>
+            ) : (
+              <div className="rl-summary-card">
+                <p>{intro}</p>
+              </div>
+            )}
           </section>
         )}
 
         {analysisReport?.overall_summary && (
-          <section id="summary" className="scroll-mt-8 py-6 border-b border-border/50">
-            <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold mb-3">
-              Summary
-            </h2>
-            <p className="text-[15px] leading-[1.75] text-foreground/90">
-              <FactCitations text={analysisReport.overall_summary} factMap={factMap} />
-            </p>
+          <section id="summary" className="scroll-mt-8">
+            <div className="rl-tl-section-head">
+              <h3>Summary</h3>
+              <span className="n">auto-generated</span>
+              <div className="line" />
+            </div>
+            {slug ? (
+              <SectionTweak
+                slug={slug}
+                section="summary"
+                sectionLabel="Summary"
+                canEdit={canEdit}
+                originalContent={analysisReport.overall_summary}
+              >
+                <div className="rl-summary-card">
+                  <p>
+                    <FactCitations
+                      text={analysisReport.overall_summary}
+                      factMap={factMap}
+                    />
+                  </p>
+                </div>
+              </SectionTweak>
+            ) : (
+              <div className="rl-summary-card">
+                <p>
+                  <FactCitations
+                    text={analysisReport.overall_summary}
+                    factMap={factMap}
+                  />
+                </p>
+              </div>
+            )}
           </section>
         )}
 
         {tensions.length > 0 && (
-          <section id="tensions" className="scroll-mt-8 py-6 border-b border-border/50">
-            <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold mb-3">
-              Cross-question tensions
-            </h2>
+          <section id="tensions" className="scroll-mt-8">
+            <div className="rl-tl-section-head">
+              <h3>Cross-question tensions</h3>
+              <span className="n">{tensions.length}</span>
+              <div className="line" />
+            </div>
             <div className="space-y-2">
               {tensions.map((t: any, i: number) => (
                 <div
                   key={i}
-                  className="p-3 rounded-md border border-amber-500/20 bg-amber-500/5 text-[13px] leading-relaxed"
+                  className="p-3 rounded-md border border-accent-amber/20 bg-accent-amber/5 text-[13px] leading-relaxed"
                 >
                   <div className="flex flex-wrap gap-1.5 mb-1.5 text-[10px]">
                     {(t.involved_questions ?? []).map((qid: string) => (
@@ -510,7 +636,7 @@ export function ProjectDocument({
                     ))}
                   </div>
                   <div>
-                    <FactCitations text={t.description} factMap={factMap} />
+                    <FactCitations text={t.description} factMap={factMap} ingredients={ingredients} />
                   </div>
                 </div>
               ))}
@@ -526,69 +652,115 @@ export function ProjectDocument({
             facts={facts}
             verMap={verMap}
             factMap={factMap}
+            ingredients={ingredients}
           />
         ))}
 
         {comparisonTable && (
-          <section id="comparison" className="scroll-mt-8 py-10 border-t border-border/50">
-            <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold mb-3">
-              Method comparison
-            </h2>
-            <div
-              className="overflow-x-auto prose-reader text-[13px] leading-relaxed [&_table]:w-full [&_th]:bg-muted/40 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:border [&_th]:border-border/60 [&_td]:px-3 [&_td]:py-2 [&_td]:border [&_td]:border-border/60 [&_table]:border-collapse"
-              dangerouslySetInnerHTML={{ __html: markdownTableToHtml(comparisonTable) }}
-            />
+          <section id="comparison" className="scroll-mt-8">
+            <div className="rl-tl-section-head">
+              <h3>Method comparison</h3>
+              <div className="line" />
+            </div>
+            {slug ? (
+              <SectionTweak
+                slug={slug}
+                section="comparison"
+                sectionLabel="Method comparison"
+                canEdit={canEdit}
+                originalContent={comparisonTable}
+              >
+                <div
+                  className="overflow-x-auto prose-reader text-[13px] leading-relaxed [&_table]:w-full [&_th]:bg-muted/40 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:border [&_th]:border-border/60 [&_td]:px-3 [&_td]:py-2 [&_td]:border [&_td]:border-border/60 [&_table]:border-collapse"
+                  dangerouslySetInnerHTML={{
+                    __html: markdownTableToHtml(comparisonTable),
+                  }}
+                />
+              </SectionTweak>
+            ) : (
+              <div
+                className="overflow-x-auto prose-reader text-[13px] leading-relaxed [&_table]:w-full [&_th]:bg-muted/40 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:border [&_th]:border-border/60 [&_td]:px-3 [&_td]:py-2 [&_td]:border [&_td]:border-border/60 [&_table]:border-collapse"
+                dangerouslySetInnerHTML={{
+                  __html: markdownTableToHtml(comparisonTable),
+                }}
+              />
+            )}
           </section>
         )}
 
         {deployment && (
-          <section id="deployment" className="scroll-mt-8 py-10 border-t border-border/50">
-            <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold mb-3">
-              Deployment sequence
-            </h2>
-            <ol className="space-y-2.5 text-[14px] leading-relaxed list-none counter-reset-[step]">
-              {deployment
-                .split("\n")
-                .map((l) => l.trim())
-                .filter((l) => l && /^\d+\./.test(l))
-                .map((step, i) => {
-                  const text = step.replace(/^\d+\.\s*/, "");
-                  return (
-                    <li
-                      key={i}
-                      className="flex items-start gap-3 p-3 rounded-md border border-border/50 bg-muted/10 hover:bg-muted/20 transition-colors"
-                    >
-                      <span className="font-mono text-[11px] text-muted-foreground shrink-0 pt-0.5 tabular-nums w-6">
-                        {i + 1}.
-                      </span>
-                      <div className="flex-1">
-                        <FactCitations text={text} factMap={factMap} />
-                      </div>
-                    </li>
-                  );
-                })}
-            </ol>
+          <section id="deployment" className="scroll-mt-8">
+            <div className="rl-tl-section-head">
+              <h3>Deployment sequence</h3>
+              <div className="line" />
+            </div>
+            {slug ? (
+              <SectionTweak
+                slug={slug}
+                section="deployment"
+                sectionLabel="Deployment sequence"
+                canEdit={canEdit}
+                originalContent={deployment}
+              >
+                <DeploymentList deployment={deployment} factMap={factMap} ingredients={ingredients} />
+              </SectionTweak>
+            ) : (
+              <DeploymentList deployment={deployment} factMap={factMap} ingredients={ingredients} />
+            )}
           </section>
         )}
 
         {recommendation && (
-          <section id="recommendation" className="scroll-mt-8 py-10 border-t border-border/50">
-            <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold mb-3">
-              Recommendation
-            </h2>
-            <div className="p-4 rounded-md border border-primary/30 bg-primary/5">
-              <p className="text-[15px] leading-[1.75] text-foreground/90">
-                <FactCitations text={recommendation} factMap={factMap} />
-              </p>
+          <section id="recommendation" className="scroll-mt-8">
+            <div className="rl-tl-section-head">
+              <h3>Recommendation</h3>
+              <div className="line" />
             </div>
+            {slug ? (
+              <SectionTweak
+                slug={slug}
+                section="recommendation"
+                sectionLabel="Recommendation"
+                canEdit={canEdit}
+                originalContent={recommendation}
+              >
+                <div
+                  className="rl-summary-card"
+                  style={{
+                    borderColor: "rgba(232, 165, 132, 0.28)",
+                    background:
+                      "linear-gradient(180deg, rgba(232,165,132,0.05) 0%, var(--ink-800) 60%)",
+                  }}
+                >
+                  <p>
+                    <FactCitations text={recommendation} factMap={factMap} ingredients={ingredients} />
+                  </p>
+                </div>
+              </SectionTweak>
+            ) : (
+              <div
+                className="rl-summary-card"
+                style={{
+                  borderColor: "rgba(232, 165, 132, 0.28)",
+                  background:
+                    "linear-gradient(180deg, rgba(232,165,132,0.05) 0%, var(--ink-800) 60%)",
+                }}
+              >
+                <p>
+                  <FactCitations text={recommendation} factMap={factMap} ingredients={ingredients} />
+                </p>
+              </div>
+            )}
           </section>
         )}
 
         {referenceUrls.length > 0 && (
-          <section id="references" className="scroll-mt-8 py-10 border-t border-border/50">
-            <h2 className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold mb-3">
-              References · {referenceUrls.length}
-            </h2>
+          <section id="references" className="scroll-mt-8">
+            <div className="rl-tl-section-head">
+              <h3>References</h3>
+              <span className="n">{referenceUrls.length}</span>
+              <div className="line" />
+            </div>
             <ol className="space-y-1.5 text-[12px] list-none">
               {referenceUrls.map((r) => (
                 <li key={r.url} className="flex items-start gap-3">
@@ -610,12 +782,15 @@ export function ProjectDocument({
         )}
       </article>
 
-      {/* TOC sidebar */}
-      <aside className="hidden lg:block">
-        <nav className="sticky top-20 space-y-0.5 text-[12px]">
-          <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-3 pl-2">
+      {/* Rail — TOC + verification breakdown. Ported from
+          the report prototype rail. Hidden on <lg; JumpToTop
+          covers mobile navigation. */}
+      <aside className="hidden lg:flex flex-col gap-4 sticky top-6 self-start">
+        <div className="border border-ink-600 rounded-xl bg-ink-800 p-4 px-4">
+          <h4 className="font-mono text-[11px] text-fg-muted tracking-[0.1em] uppercase mb-3">
             On this page
-          </div>
+          </h4>
+          <nav className="space-y-0.5 text-[12px] -mx-1">
           {analysisReport?.overall_summary && (
             <TocItem id="summary" activeId={activeSection} label="Summary" />
           )}
@@ -643,12 +818,12 @@ export function ProjectDocument({
                       <span
                         className={`inline-block w-1.5 h-1.5 rounded-full ml-auto ${
                           a.coverage === "complete"
-                            ? "bg-emerald-400"
+                            ? "bg-accent-sage"
                             : a.coverage === "partial"
-                              ? "bg-amber-400"
+                              ? "bg-accent-amber"
                               : a.coverage === "gaps_critical"
-                                ? "bg-orange-400"
-                                : "bg-red-400"
+                                ? "bg-accent-rust"
+                                : "bg-accent-red"
                         }`}
                       />
                     )}
@@ -685,9 +860,223 @@ export function ProjectDocument({
               label={`References (${referenceUrls.length})`}
             />
           )}
-        </nav>
+          </nav>
+        </div>
+
+        <BreakdownCard project={project} />
+        {branches && (branches.children.length > 0 || branches.siblings.length > 0 || branches.parent) && (
+          <BranchesCard branches={branches} currentSlug={slug} />
+        )}
       </aside>
       <JumpToTop />
+    </div>
+  );
+}
+
+function DeploymentList({
+  deployment,
+  factMap,
+  ingredients,
+}: {
+  deployment: string;
+  factMap: Map<string, any>;
+  ingredients?: string[];
+}) {
+  const steps = deployment
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && /^\d+\./.test(l))
+    .map((step) => step.replace(/^\d+\.\s*/, ""));
+  return (
+    <ol className="space-y-2.5 text-[14px] leading-relaxed list-none">
+      {steps.map((text, i) => (
+        <li
+          key={i}
+          className="flex items-start gap-3 p-3 rounded-md border border-border/50 bg-muted/10 hover:bg-muted/20 transition-colors"
+        >
+          <span className="font-mono text-[11px] text-muted-foreground shrink-0 pt-0.5 tabular-nums w-6">
+            {i + 1}.
+          </span>
+          <div className="flex-1">
+            <FactCitations text={text} factMap={factMap} ingredients={ingredients} />
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function BranchesCard({
+  branches,
+  currentSlug,
+}: {
+  branches: { children: any[]; parent: any | null; siblings: any[] };
+  currentSlug?: string;
+}) {
+  const { children, parent, siblings } = branches;
+  // Siblings excludes current slug by default; collapse parent's kids
+  // minus self so the user sees "you are here, and these are your peers".
+  const otherSiblings = siblings.filter((s) => s.slug !== currentSlug);
+  return (
+    <div className="border border-ink-600 rounded-xl bg-ink-800 p-4 text-[12px]">
+      <h4 className="font-mono text-[11px] text-fg-muted tracking-[0.1em] uppercase mb-3">
+        Branches
+      </h4>
+      {parent && (
+        <>
+          <div className="font-mono text-[10px] text-fg-faint uppercase tracking-wider mb-1.5">
+            source
+          </div>
+          <BranchRow p={parent} subtle />
+        </>
+      )}
+      {children.length > 0 && (
+        <>
+          <div className="font-mono text-[10px] text-fg-faint uppercase tracking-wider mt-3 mb-1.5">
+            extends of this · {children.length}
+          </div>
+          <div className="space-y-1.5">
+            {children.map((p) => (
+              <BranchRow key={p.slug} p={p} />
+            ))}
+          </div>
+        </>
+      )}
+      {otherSiblings.length > 0 && (
+        <>
+          <div className="font-mono text-[10px] text-fg-faint uppercase tracking-wider mt-3 mb-1.5">
+            other extends of the source · {otherSiblings.length}
+          </div>
+          <div className="space-y-1.5">
+            {otherSiblings.map((p) => (
+              <BranchRow key={p.slug} p={p} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BranchRow({
+  p,
+  subtle = false,
+}: {
+  p: any;
+  subtle?: boolean;
+}) {
+  const title = p.topic.split("\n")[0] || p.slug;
+  return (
+    <Link
+      href={`/projects/${p.slug}`}
+      className={`block px-2.5 py-1.5 rounded-md border border-ink-600 hover:border-ink-500 hover:bg-ink-700 transition ${
+        subtle ? "opacity-80" : ""
+      }`}
+    >
+      <div className="text-[12px] text-fg truncate">
+        {title.slice(0, 48)}
+        {title.length > 48 ? "…" : ""}
+      </div>
+      <div className="font-mono text-[10.5px] text-fg-muted mt-0.5 flex gap-2">
+        <span>{p.facts} F</span>
+        <span>·</span>
+        <span>{p.sources} S</span>
+        {p.hasReport && (
+          <span className="text-accent-sage ml-auto">✓ report</span>
+        )}
+      </div>
+    </Link>
+  );
+}
+
+function BreakdownCard({ project }: { project: Project }) {
+  const v = project.verification?.summary;
+  const verMap = new Map<string, any>();
+  if (project.verification?.verifications) {
+    for (const ve of project.verification.verifications)
+      verMap.set(ve.claim_id ?? ve.fact_id, ve);
+  }
+  const verified = v?.verified ?? 0;
+  const total = v?.total ?? project.facts.length;
+  const rejected = total - verified;
+
+  // Count verdict types among rejected
+  let overreach = 0;
+  let urlDead = 0;
+  for (const ve of project.verification?.verifications ?? []) {
+    if (ve.verdict === "verified") continue;
+    if (ve.verdict === "url_dead" || ve.verdict === "quote_fabricated") urlDead++;
+    else overreach++;
+  }
+
+  const providers = (project.sources?.by_provider ?? {}) as Record<
+    string,
+    number
+  >;
+  const totalSources = project.sources?.total_sources ?? 0;
+
+  return (
+    <div className="border border-ink-600 rounded-xl bg-ink-800 p-4 px-4 text-[12px]">
+      <h4 className="font-mono text-[11px] text-fg-muted tracking-[0.1em] uppercase mb-3">
+        Breakdown
+      </h4>
+      <RailStat k="facts" v={String(total)} />
+      {total > 0 && (
+        <>
+          <RailStat
+            k="verified"
+            v={String(verified)}
+            vClass="text-accent-sage"
+          />
+          {rejected > 0 && (
+            <RailStat
+              k="rejected"
+              v={String(rejected)}
+              vClass="text-fg-muted"
+            />
+          )}
+          {urlDead > 0 && (
+            <RailStat k="url / quote" v={String(urlDead)} vClass="text-accent-red" />
+          )}
+          {overreach > 0 && (
+            <RailStat
+              k="adversarial"
+              v={String(overreach)}
+              vClass="text-accent-amber"
+            />
+          )}
+        </>
+      )}
+      {totalSources > 0 && (
+        <div className="pt-3 mt-3 border-t border-ink-600">
+          <RailStat k="sources" v={String(totalSources)} />
+          {Object.entries(providers)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 5)
+            .map(([name, count]) => (
+              <RailStat key={name} k={name} v={String(count)} />
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RailStat({
+  k,
+  v,
+  vClass,
+}: {
+  k: string;
+  v: string;
+  vClass?: string;
+}) {
+  return (
+    <div className="flex justify-between py-1">
+      <span className="font-mono text-[11px] text-fg-muted">{k}</span>
+      <span className={`font-mono text-[11.5px] ${vClass ?? "text-fg"}`}>
+        {v}
+      </span>
     </div>
   );
 }
@@ -705,10 +1094,10 @@ function TocItem({
   return (
     <a
       href={`#${id}`}
-      className={`block px-2 py-1.5 rounded transition-all border-l-2 ${
+      className={`block px-3 py-1.5 border-l transition ${
         isActive
-          ? "border-primary bg-primary/5 text-foreground font-medium"
-          : "border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+          ? "border-accent-primary text-fg"
+          : "border-ink-600 text-fg-muted hover:text-fg hover:border-ink-500"
       }`}
     >
       {label}

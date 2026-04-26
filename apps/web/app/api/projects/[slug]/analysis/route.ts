@@ -1,5 +1,5 @@
 import { getProject } from "@/lib/projects";
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, viewerUidFromRequest } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export async function GET(
   const auth = requireAuth(request);
   if (!auth.ok) return auth.response;
   const { slug } = await params;
-  const project = getProject(slug);
+  const project = getProject(slug, viewerUidFromRequest(request));
   if (!project) return Response.json({ error: "Not found" }, { status: 404 });
 
   // For question-first: returns analysisReport. For legacy: returns criticReport.

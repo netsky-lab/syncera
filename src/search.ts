@@ -16,9 +16,15 @@ export async function searchSearXNG(
     pageno: String(pageno),
   });
 
-  const resp = await fetch(`${config.searxng.url}/search?${params}`, {
-    headers: { Accept: "application/json" },
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(`${config.searxng.url}/search?${params}`, {
+      headers: { Accept: "application/json" },
+    });
+  } catch (err: any) {
+    console.warn(`[searxng] Network error: ${err?.message ?? String(err)}`);
+    return [];
+  }
 
   if (!resp.ok) {
     console.warn(`[searxng] Error ${resp.status}: ${await resp.text().catch(() => "")}`);
@@ -232,6 +238,117 @@ function simplifyQuery(query: string): string {
   return words.slice(0, 6).join(" ");
 }
 
+// --- Gemini Google Search grounding (optional, paid/native Gemini tool) ---
+
+export async function searchGeminiGrounding(
+  query: string,
+  maxResults = config.geminiSearch.maxResults
+): Promise<SearchResult[]> {
+  if (!config.geminiSearch.enabled || !config.geminiSearch.apiKey) return [];
+
+  const model = encodeURIComponent(config.geminiSearch.model);
+  const url = `${config.geminiSearch.baseURL.replace(/\/+$/, "")}/models/${model}:generateContent?key=${encodeURIComponent(config.geminiSearch.apiKey)}`;
+  const prompt = [
+    "Use Google Search grounding. Search the web now to find current, authoritative, citable sources for this research query.",
+    "Prefer primary sources, official docs, peer-reviewed papers, technical reports, standards, or regulator pages.",
+    "Avoid generic SEO/blog pages unless they are the only way to identify a primary source.",
+    "Return a concise list of sources. For each source, write exactly: Title: ... URL: https://... Why: ...",
+    "Do not omit URLs; if grounding metadata is unavailable, put the full source URLs in the text.",
+    `Research query: ${query}`,
+  ].join("\n");
+
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 768,
+        },
+      }),
+      signal: AbortSignal.timeout(config.geminiSearch.timeoutMs),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      console.warn(`[gemini-search] Error ${resp.status}: ${text.slice(0, 180)}`);
+      return [];
+    }
+    const data = await resp.json();
+    const candidate = data.candidates?.[0];
+    const answerText = candidate?.content?.parts
+      ?.map((p: any) => p.text)
+      .filter(Boolean)
+      .join("\n") ?? "";
+    const metadata = candidate?.groundingMetadata ?? {};
+    const chunks = metadata.groundingChunks ?? [];
+    const rows: SearchResult[] = [];
+    for (const chunk of chunks) {
+      const web = chunk.web;
+      if (!web?.uri) continue;
+      rows.push({
+        title: web.title ?? web.uri,
+        url: web.uri,
+        snippet: answerText.slice(0, 500),
+        provider: "gemini:google_search",
+        query,
+      });
+      if (rows.length >= maxResults) break;
+    }
+    if (rows.length === 0 && Array.isArray(metadata.webSearchQueries)) {
+      const expandedQueries = metadata.webSearchQueries
+        .filter((q: unknown) => typeof q === "string" && q.trim().length > 0)
+        .slice(0, 2);
+      const expanded = (
+        await Promise.all(
+          expandedQueries.map((q: string) =>
+            searchSearXNG(q, { maxResults: Math.max(2, Math.ceil(maxResults / 2)) })
+          )
+        )
+      )
+        .flat()
+        .slice(0, maxResults)
+        .map((r) => ({
+          ...r,
+          provider: `gemini_query:${r.provider}`,
+          query,
+        }));
+      rows.push(...expanded);
+    }
+    if (rows.length === 0) {
+      for (const url of extractUrls(answerText).slice(0, maxResults)) {
+        rows.push({
+          title: url,
+          url,
+          snippet: answerText.slice(0, 500),
+          provider: "gemini:text_url",
+          query,
+        });
+      }
+    }
+    return rows;
+  } catch (err: any) {
+    console.warn(`[gemini-search] ${err?.message ?? String(err)}`);
+    return [];
+  }
+}
+
+function extractUrls(text: string): string[] {
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  const re = /https?:\/\/[^\s<>"')\]]+/g;
+  for (const match of text.matchAll(re)) {
+    const url = match[0].replace(/[.,;:]+$/g, "");
+    const key = url.toLowerCase().replace(/\/+$/, "");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    urls.push(url);
+  }
+  return urls;
+}
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -242,16 +359,17 @@ export async function searchAll(
   query: string,
   maxResults = 20
 ): Promise<SearchResult[]> {
-  const [web, arxiv, openalex] = await Promise.all([
+  const [web, arxiv, openalex, gemini] = await Promise.all([
     searchSearXNG(query, { maxResults }),
     searchArxiv(query, 15),
     searchOpenAlex(query, 15),
+    searchGeminiGrounding(query),
   ]);
 
   const s2 = await searchSemanticScholar(query, 5);
   await sleep(1200); // respect S2 rate limit
 
-  const flat = [...web, ...arxiv, ...openalex, ...s2];
+  const flat = [...web, ...arxiv, ...openalex, ...gemini, ...s2];
 
   // Deduplicate by URL
   const seen = new Set<string>();

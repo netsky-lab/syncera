@@ -1,108 +1,132 @@
 # Architecture
 
-Research Lab is a 5-phase pipeline that turns a research topic into a citation-backed report, with structured intermediate artifacts at every step.
+Syncera is a question-first research pipeline: a topic becomes a structured question tree, each subquestion is independently harvested and fact-extracted with exact-quote binding, every fact is verified against its cited URL through a three-layer check, and only verified facts reach the final report.
 
 ## Design principles
 
-1. **Filesystem is source of truth.** Every phase writes a structured JSON/Markdown artifact to the project folder. The pipeline can be resumed from any phase, artifacts can be inspected by hand, and projects are git-friendly.
-2. **Each phase is just `prompt + Zod schema + LLM call + retry`.** No magic; the layer's value is in its schema, prompt, and post-processing — not in an opaque abstraction.
-3. **Deep research, not metadata parsing.** Queries get paginated SearXNG results, every URL is scraped for full content via Jina Reader (not snippets), and the loop recurses on follow-up questions like a human researcher would.
-4. **Provider-agnostic LLM.** Uses OpenAI-compatible HTTP. Works with Gemma 4 on vLLM/Ollama, Llama 3, GPT-4, Claude via compatibility layer, etc.
+1. **Filesystem is the source of truth.** Every phase writes a structured JSON or Markdown artifact to the project folder. Phases are resumable — if the artifact exists, skip unless `--re-<phase>` is passed. Full runs are 30–60 min; iterating on the synthesizer prompt alone is ~4 min.
+2. **Every phase is `schema + prompt + function call + post-check`.** No opaque abstractions. All structured LLM outputs go through OpenAI-compatible tool/function calling, then a Zod schema with retry on parse/validation failure; on schema mismatch the retry prompt includes the exact zod issue paths.
+3. **Question-first, not hypothesis-first.** The planner decomposes a topic into questions the report must answer — not hypotheses the report must support. Fabricated numeric thresholds up front are the thing we don't do.
+4. **Audit trail over narrative.** Every sentence in the report traces to a verified `Fact` with `{statement, confidence, references:[{url, exact_quote}]}`; every fact traces to a verdict from the verifier. The synthesizer is only fed verified facts.
+5. **Provider-agnostic LLM.** OpenAI-compatible HTTP. Works with Qwen / Gemma / Llama on vLLM, llama.cpp, Ollama, Runpod, plus Gemini's OpenAI-compatible endpoint. Provider config is split by `LLM_PROVIDER=qwen|gemini`.
+6. **Cognition is inspectable.** The web product exposes coverage, sources, fact verification, usage, versions, and `/api/projects/:slug/audit` as first-class surfaces instead of hiding them behind the final prose.
 
-## Pipeline phases
+## Pipeline
 
-### 1. Planner (`src/planner.ts`)
+```
+Topic
+  │
+  ├─ scout        → scout_digest.json
+  ├─ plan         → plan.json               (ResearchQuestion[] × Subquestion[])
+  ├─ harvest      → sources/<SQ>.json       + sources/content/<hash>.md
+  ├─ evidence     → facts.json              (Fact[] with exact-quote refs)
+  ├─ verify       → verification.json       (3-layer check per fact)
+  ├─ analyze      → analysis_report.json    (per-question answers + tensions)
+  ├─ synth        → REPORT.md               (only verified facts)
+  └─ refine       (opt-in: --refine)
+```
 
-Turns a topic into a structured `ResearchPlan`:
-- 3–10 falsifiable hypotheses, each with measurable `acceptance_criteria` (metric name + threshold)
-- 5–15 tasks, each linked to a hypothesis, with `depends_on` edges between tasks
-- Budget (max steps, max sources)
+### Scout (`src/scout.ts`)
+Broad literature survey before planning. Feeds a digest into the planner so questions aren't invented in a vacuum.
 
-**LLM call**: one `generateJson` with `ResearchPlanSchema` + `PLANNER_SYSTEM_PROMPT`.
+### Planner (`src/planner.ts`)
+Topic → `ResearchPlan` = 5–15 `ResearchQuestion` (category ∈ {factual, comparative, trade_off, feasibility, deployment, mechanism}), each with 2–5 `Subquestion` (angle ∈ {benchmark, methodology, comparison, case_study, feasibility, trade_off}). No thresholds, no hypotheses. Categories drive narrative tone; angles drive query phrasing. Planner post-processing repairs IDs, canonicalizes near-miss enum labels, and expands too-short plans to the minimum count.
 
-### 2. Harvester (`src/harvester.ts`)
+### Harvester (`src/harvester.ts`)
+For each subquestion:
+1. **Breadth** — LLM generates diverse queries from the subquestion text and angle.
+2. **Search** — SearXNG (paginated) + Arxiv + OpenAlex + Semantic Scholar in parallel.
+3. **Scrape** — top-N URLs rendered to markdown via Playwright (system chromium). Scored by tier (primary > official > code > blog > community) so the extractor sees the best source first.
+4. **Extract learnings** — one LLM pass per subquestion emitting concise factual learnings.
+5. **Persist** — `sources/<SQ>.json` (search results + learnings), `sources/content/<hash>.md` (full markdown), `sources/index.json` (aggregate).
 
-Deep-research loop inspired by [`dzhng/deep-research`](https://github.com/dzhng/deep-research), adapted to our stack:
+### Evidence (`src/evidence.ts`)
+Per subquestion, packs the learnings + tier-sorted source catalog into a prompt. LLM emits `Fact[]` with `{id, question_id, subquestion_id, statement, factuality ∈ {quantitative|qualitative|comparative|background}, confidence 0–1, references:[{url, title, exact_quote}]}`. Post-processing:
 
-For each task in the plan:
-1. **Breadth**: LLM generates N diverse search queries from the task goal.
-2. **Search**: Each query hits SearXNG (paginated, multi-engine: Google / DuckDuckGo / Startpage) + Arxiv + Semantic Scholar in parallel. 20–100 results per query.
-3. **Scrape**: Top-N unvisited URLs are fetched through [Jina Reader](https://r.jina.ai/) → full markdown content (not snippets).
-4. **Extract learnings**: LLM reads the full content and emits concise factual learnings + follow-up questions via `LearningsSchema`.
-5. **Recurse**: If `depth > 1`, breadth halves, the loop runs again with follow-up questions as the new goal.
+- **Attribution check** — extract the fact's primary named entity (CamelCase/KV-stem/ACRONYM/hyphenated regexes), require it to appear in the cited source's scraped content. Swap URL to a source that does contain it, or downgrade confidence to 0.3.
+- **Dedup** by first 120 chars of statement.
 
-Outputs:
-- `sources/<task>.json` — search results with `raw_content` attached
-- `sources/content/<hash>.md` — full scraped markdown per URL
-- `sources/index.json` — summary (total, breakdown by provider & task)
+Output: `facts.json`.
 
-### 3. Evidence (`src/evidence.ts`)
+### Verifier (`src/verifier.ts`)
+Three layers per fact, cheapest-first:
 
-For each task/hypothesis:
-- Pack up to 40k characters of full-content sources + harvester learnings into prompt
-- LLM extracts `Claim[]` with `{id, hypothesis_id, statement, type: supports|contradicts|neutral, confidence 0–1, references[{url, title, exact_quote}]}`
-- Deduplicate by statement similarity
+1. **URL liveness** — GET with `Range: bytes=0-0`. Verdict: `url_dead` if unreachable.
+2. **Keyword substring** — normalize the exact quote to lowercase + stripped whitespace, check keyword overlap against the scraped content. Verdict: `quote_fabricated` if ≥3 keywords extracted and <2 match.
+3. **LLM adversarial review** — pass fact + 15k-char source excerpt to a skeptical fact-checker prompt. Verdicts: `verified | overreach | out_of_context | cherry_picked | misread`, with notes and a `corrected_statement` for non-verified.
 
-Output: `claims.json`.
+Output: `verification.json` with per-fact verdicts + summary.
 
-### 4. Critic (`src/critic.ts`)
+### Analyzer (`src/analyzer.ts`)
+Filters to verified facts, produces per-question narrative answers with `{coverage ∈ {complete|partial|gaps_critical|insufficient}, key_facts, conflicting_facts, gaps, follow_ups}`. Also surfaces `cross_question_tensions`.
 
-Reads all claims + hypotheses, produces `CriticReport`:
-- Per hypothesis: status (`well_supported` / `partially_supported` / `unsupported` / `contradicted`), confidence, supporting/contradicting claim IDs, gaps, recommendation
-- Cross-claim contradiction detection
-- Overall confidence + summary
+Output: `analysis_report.json`.
 
-Output: `critic_report.json`.
-
-### 5. Synthesizer (`src/synthesizer.ts`)
-
-Reads plan + claims + critic report, generates final markdown report:
-- Executive summary
-- One section per hypothesis with cited evidence (`[C1]` style)
-- Gaps & next steps
-- Methodology
-- References (deduplicated URL list)
+### Synthesizer (`src/synthesizer.ts`)
+Assembles the final markdown report using **only verified facts**, with inline citations `[F#]`. Coverage tally + per-question status in the auto-generated `README.md`.
 
 Output: `REPORT.md`.
 
-## Data model
-
-See `src/schemas/` for Zod source:
-
-- `plan.ts` — `ResearchPlanSchema`, `HypothesisSchema`, `TaskSchema`
-- `source.ts` — `SearchResultSchema`, `SourceIndexSchema`
-- `learning.ts` — `SerpQueriesSchema`, `LearningsSchema`
-- `claim.ts` — `ClaimSchema`, `ReferenceSchema`, `CriticReportSchema`
+### Refine (`src/refine.ts`, opt-in via `--refine`)
+For questions flagged `insufficient`/`gaps_critical`, generates narrower targeted queries from the gap list ("TurboQuant CUDA kernel RTX 5090 implementation" vs broad survey queries), harvests, re-runs evidence → verify → analyze → synth with the new findings folded in.
 
 ## LLM integration (`src/llm.ts`)
 
-One function: `generateJson({schema, system, prompt, maxTokens, temperature, maxRetries})`.
+Single entry point for structured outputs: `generateJson({schema, system, prompt, temperature, maxRetries, endpoint})`.
 
-- Sends `response_format: { type: "json_object" }` with the schema rendered as a human-readable hint in the prompt
-- Parses JSON, validates with Zod
-- On failure: retries up to `maxRetries` times with the validation errors appended as feedback
-- Works around the fact that `@ai-sdk/openai-compatible` doesn't support `responseFormat` for most providers
+- Sends an OpenAI-compatible function/tool call (`submit_structured_output` for generic calls, phase-specific tool names where helpful).
+- Parses + validates against the schema.
+- On parse failure: retries with the error message in the retry prompt.
+- On zod validation failure: retries with the specific issue paths (`facts.0.confidence: Expected number, received string`) so the model can self-correct.
+- Endpoint failover: on fatal error, try the next URL in `QWEN_FALLBACK_URLS` / `GEMINI_FALLBACK_URLS` / legacy `GEMMA_FALLBACK_URLS`.
 
-## Search infrastructure
+Also: `generateText` (plain prose), `countTokens`, `getContextWindow`, `inputTokenBudget`.
 
-- **SearXNG** (`infra/searxng/`): self-hosted metasearch (Google, DuckDuckGo, Startpage, Wikipedia, …). Docker compose. No API keys, no rate limits.
-- **Arxiv**: public XML API, free.
-- **Semantic Scholar**: public JSON API, free, rate-limited (handled with backoff).
+## Data model
+
+See `src/schemas/`:
+
+- `plan.ts` — `ResearchPlanSchema`, `ResearchQuestionSchema`, `SubquestionSchema`
+- `source.ts` — `SearchResultSchema`, `SourceIndexSchema`
+- `learning.ts` — `SerpQueriesSchema`, `LearningsSchema`
+- `fact.ts` — `FactSchema`, `ReferenceSchema`, `QuestionAnswerSchema`, `AnalysisReportSchema`
+- `verification.ts` — `VerdictSchema` (7 verdicts), `VerificationSchema`
 
 ## Project folder layout
 
 ```
 projects/<slug>/
+├── scout_digest.json
 ├── plan.json
-├── README.md
-├── hypotheses/H*.md
 ├── sources/
-│   ├── T*.json
-│   ├── content/<hash>.md
-│   └── index.json
-├── claims.json
-├── critic_report.json
+│   ├── <SQ>.json            per-subquestion results + learnings
+│   ├── content/<hash>.md    raw scraped markdown
+│   └── index.json           by-provider / by-subquestion aggregate
+├── facts.json
+├── verification.json
+├── analysis_report.json
+├── README.md                auto-generated overview + coverage tally
 └── REPORT.md
 ```
 
-Multi-project: each topic gets its own folder. The Next.js app (`apps/web/`) reads from `projects/` directly — no database.
+Multi-project: each topic is an independent folder. The Next.js app (`apps/web/`) reads from `projects/` directly — no database. Web container writes via a bind mount; pipeline containers are spawned via docker-out-of-docker on the same compose network.
+
+## Web (`apps/web/`)
+
+Next.js 16 App Router. Edge middleware handles auth, CORS, and token-bucket rate limiting; route handlers run on Node for filesystem + scrypt access.
+
+- **Auth**: email/password accounts (scrypt N=16384), HMAC-SHA256 signed session cookies (30-day Max-Age, HttpOnly, SameSite=Lax). Middleware verifies via Web Crypto so it runs on Edge.
+- **API keys**: file-backed store (`lib/keys.ts`), SHA-256 hashed, raw shown once, revocation idempotent.
+- **Admin surface**: `/api/admin/users`, `/api/admin/keys` — session-gated, admin-role only. Self-delete and last-admin guards.
+- **OpenAPI 3.1**: `/api/openapi.json` documents every endpoint including auth + admin.
+- **Project view**: reading-mode layout (scroll-spy TOC, citation chips, JumpToTop) for question-first projects; legacy tabs view for hypothesis-first.
+- **PDF export**: `/api/projects/{slug}/pdf` — Playwright renders `/projects/{slug}/print` to PDF with print.css overrides.
+
+## Deployment
+
+`deploy/docker-compose.yml` on the host:
+
+- **searxng** — the metasearch instance.
+- **web** — the Next.js app, with `/var/run/docker.sock` bind-mounted and `group_add: <docker GID>` so it can spawn sibling pipeline containers on the same compose network.
+- Volumes: `../projects:/app/projects:rw`, `../data:/app/data:rw` (persistent users/keys store).
+- Env: `SESSION_SECRET`, `ADMIN_EMAIL/PASSWORD`, `GEMMA_BASE_URL`, `API_CORS_ORIGINS`, `API_RATE_LIMIT_PER_MIN`, `PIPELINE_HOST_REPO_ROOT`, `PIPELINE_NETWORK`.

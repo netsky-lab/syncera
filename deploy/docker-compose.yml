@@ -61,6 +61,9 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       # Open signup (default: first user becomes admin, rest require invite).
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-0}
+      # Public base URL used in webhook payload's `artifacts.*` links.
+      # Must be externally reachable by the webhook consumer.
+      PUBLIC_URL: ${PUBLIC_URL:-}
       NODE_ENV: production
       # LLM endpoint + search used when the web UI spawns a pipeline run.
       # Override via deploy/.env.
@@ -94,7 +97,10 @@ services:
       searxng:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      # Use 127.0.0.1 not localhost — the container's /etc/hosts lists
+      # `::1 localhost` first, so wget tries IPv6 and gets Connection
+      # refused since Next.js binds IPv4 0.0.0.0:3000.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3

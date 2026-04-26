@@ -3,6 +3,25 @@
 // with the shape of credentials; this helper validates them for real.
 
 import { verifyKey } from "@/lib/keys";
+import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+
+/** Extract the viewer's uid for the purpose of project-visibility filtering.
+ *  Priority: session cookie (uid from signed payload) → API key (uid of
+ *  the user who minted the key). Returns null if neither is present or
+ *  both are anonymous (e.g. env-seed API_KEYS which have no owner). */
+export function viewerUidFromRequest(request: Request): string | null {
+  const cookie = request.headers.get("cookie") ?? "";
+  const m = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
+  const sessionUid = verifySession(m?.[1])?.uid;
+  if (sessionUid) return sessionUid;
+
+  const rawKey = apiKeyFromHeaders(request.headers);
+  if (rawKey) {
+    const record = verifyKey(rawKey);
+    if (record?.owner_uid) return record.owner_uid;
+  }
+  return null;
+}
 
 function apiKeyFromHeaders(headers: Headers): string | null {
   const h = headers.get("x-api-key");
@@ -17,6 +36,14 @@ export function requireAuth(request: Request): { ok: true } | { ok: false; respo
   if (!basicPass && !process.env.API_KEYS && !hasStoredKeys()) {
     // Auth fully disabled (dev mode)
     return { ok: true };
+  }
+
+  // Session cookie — browser UI issued via /api/auth/login.
+  const cookie = request.headers.get("cookie") ?? "";
+  if (cookie.includes("rl_session=")) {
+    const { COOKIE_NAME, verifySession } = require("@/lib/sessions");
+    const match = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
+    if (verifySession(match?.[1])) return { ok: true };
   }
 
   // API key — env seed or file-backed
@@ -41,7 +68,7 @@ export function requireAuth(request: Request): { ok: true } | { ok: false; respo
   return {
     ok: false,
     response: Response.json(
-      { error: "Unauthorized — provide a valid API key or Basic auth" },
+      { error: "Unauthorized — provide a valid API key, Bearer token, Basic auth, or session cookie" },
       { status: 401 }
     ),
   };

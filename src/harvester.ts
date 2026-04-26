@@ -4,6 +4,12 @@ import { searchAll, searchSearXNG } from "./search";
 import { readUrls } from "./reader";
 import { SerpQueriesSchema, LearningsSchema } from "./schemas/learning";
 import { scoreSource } from "./sourcing";
+import {
+  detectDomainProfile,
+  domainPromptBlock,
+  learningGuidanceBlock,
+  type DomainProfile,
+} from "./domain-profile";
 import type { SearchResult, SourceIndex } from "./schemas/source";
 import type { ResearchPlan, ResearchQuestion, Subquestion } from "./schemas/plan";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
@@ -12,10 +18,10 @@ import { join } from "path";
 interface HarvesterInput {
   plan: ResearchPlan;
   projectDir: string;
-  breadth?: number;          // parallel queries per task
+  breadth?: number;          // queries per subquestion depth level
   depth?: number;            // recursive deepening levels
   pagesPerQuery?: number;    // SearXNG pagination
-  urlsPerQuery?: number;     // how many URLs to scrape per query
+  urlsPerQuery?: number;     // readable URLs to try to collect per query
   readConcurrency?: number;
   force?: boolean;           // re-collect even if per-task cache exists
 }
@@ -30,31 +36,31 @@ const QUERY_GEN_SYSTEM = `You generate search queries for deep research. Your ou
 
 ## Two channels with DIFFERENT phrasing styles
 
-### 'academic' channel (for arxiv/openreview/aclanthology search)
-Phrasing should match PAPER TITLES and ABSTRACTS. Structure:
-- "<Method name>: <What it does> via <Technique>"  → "KIVI: Tuning-free asymmetric 2-bit quantization for KV cache"
-- "<Observed phenomenon> in <Model/Architecture>" → "Attention-head redundancy in long-context LLMs"
-- "<Technique> for <Problem> in <Domain>"          → "Channel shrinking for KV cache compression in transformers"
+### 'academic' channel
+Phrasing should match paper titles, abstracts, standards, trials, patents, or technical reports in the target field. Structure:
+- "<Named entity>: <what it does/measures> via <technique>"
+- "<Observed phenomenon> in <population/system/material/model>"
+- "<Technique/intervention> for <problem> in <domain>"
 
 ### 'web' channel (for SearXNG Google/DDG search)
-Phrasing should match BLOG POSTS, DOCS, GITHUB READMEs. Structure:
-- "How to <action> with <tool>"                    → "How to configure vLLM KV cache quantization with FP8"
-- "<Tool> <version> <feature> benchmark"           → "vLLM 0.6 paged attention throughput RTX 5090"
-- "<Method> vs <Method> <comparison axis>"         → "AWQ vs GPTQ accuracy perplexity wikitext"
+Phrasing should match official docs, regulatory pages, technical notes, product documentation, or high-quality field-specific web sources. Structure:
+- "How to <action> with <tool/method/standard>"
+- "<Entity/source> <version/year> <feature/outcome> benchmark"
+- "<Method A> vs <Method B> <comparison axis>"
 
 ## Strict rules
 
-- Name specific methods (TurboQuant, KIVI, KVQuant, PagedAttention, AWQ, GPTQ, MiniKV, Coupled Quantization), models (Gemma-2/3/4, Llama-3, Qwen), benchmarks (WikiText-103, LongBench, NIAH, GSM8K, MMLU), hardware (RTX 5090, H100, B200), frameworks (vLLM, TensorRT-LLM, Triton).
+- Name specific methods, materials, compounds, standards, datasets, populations, model names, benchmarks, tools, or hardware from the topic and domain context.
 - For 'academic' queries: NO imperatives ("how to", "implement"). Use noun phrases as in paper titles.
 - For 'web' queries: DO use imperatives and vendor names when relevant.
 - No duplicate angles. Each query must cover a distinct research sub-question.
-- If you know a canonical paper/method by name, use that name in at least one 'academic' query — it dramatically improves arxiv retrieval.
+- If you know a canonical paper, method, standard, guideline, ingredient, molecule, dataset, or framework by name, use that name in at least one query.
 
 ## Anti-patterns
 
-- "Benchmark Gemma" (too vague)
-- "Quantization research" (no specificity)
-- "Best KV cache method 2026" (listicle-style, bad for both channels)
+- "Benchmark the topic" (too vague)
+- "Research about this field" (no specificity)
+- "Best method 2026" (listicle-style, usually bad for evidence)
 
 Output JSON only, matching the schema.`;
 
@@ -69,16 +75,16 @@ Template (pick whichever fits the source fact):
   "<Authors/Paper> report <Finding> with <Dataset> in <Year>"
 
 Examples of GOOD learnings:
-  ✓ "KVQuant achieves <0.1 perplexity degradation on WikiText-2 with 3-bit KV quantization for LLaMA-7B"
-  ✓ "INT4 KV-cache reduces peak VRAM by 75% vs FP16 on 32k context for Gemma-2-27B"
-  ✓ "2-bit quantization degrades accuracy on reasoning benchmarks (GSM8K -3.1pp) for Qwen3 per Kitty paper"
-  ✓ "vLLM --kv-cache-dtype=fp8 flag halves KV memory consumption without attention speedup"
+  ✓ "Smith et al. report a 21% reduction in outcome X for population Y after 12 weeks"
+  ✓ "Method A reduces resource B by 4.7x compared to baseline C on benchmark D"
+  ✓ "Compound X degrades by 38% after 2 MED UVA exposure in emulsion Y"
+  ✓ "Official framework Z added feature Q in version 1.2 but documents limitation R"
 
 Examples of BAD learnings (REJECT, skip):
-  ✗ "Quantization significantly reduces memory"        — no number, no model, no source
-  ✗ "KV cache is important for inference performance"   — tautology, no fact
+  ✗ "The method is significant"                         — no number, entity, or measured outcome
+  ✗ "This topic is important"                           — tautology, no fact
   ✗ "Researchers have explored various methods"         — meta-statement, no claim
-  ✗ "FP8 is better than FP16"                           — missing metric/benchmark
+  ✗ "A is better than B"                                — missing metric/benchmark/context
 
 ## Rules
 
@@ -86,29 +92,23 @@ Examples of BAD learnings (REJECT, skip):
 - Prefer specific numbers over ranges.  "4.7x reduction" > "significant reduction".
 - Do NOT use the words: "significant", "substantial", "effective", "impressive", "important" (unless quoting).
 - Do NOT invent facts. If source doesn't say it, don't write it.
-- NEGATIVE findings matter: if a source reports a failure or limitation ("FP8 lacks fused ops", "2-bit fails for reasoning"), extract it — these are high-value contradictions later.
-- Preserve exact method/metric names as written in source ("NVFP4", not "4-bit FP"; "LongBench", not "long bench").
+- NEGATIVE findings matter: if a source reports a failure, adverse result, limitation, null result, or boundary condition, extract it — these are high-value contradictions later.
+- Preserve exact method/metric/entity names as written in source.
 
 ## COMPARATIVE-METHOD COVERAGE (critical for research breadth)
 
-Research papers typically compare a hero method against 3-8 baselines in tables. Extract a DISTINCT learning for EACH non-hero method the paper reports a number for — even if that method is "background". Readers need the whole landscape.
+Research papers and technical reports often compare a focal method/product/intervention against several baselines, comparators, or controls. Extract a DISTINCT learning for EACH comparator with a reported result — even if that comparator is "background". Readers need the whole landscape.
 
-GOOD (one per baseline):
-  ✓ "TurboQuant achieves 6x KV reduction on Gemma [paper X]"
-  ✓ "Kitty reports 3.1pp GSM8K drop at 2-bit on Qwen3 [paper X Table 2]"
-  ✓ "MiniKV achieves 80%+ compression on Llama-3 [paper X Table 2]"
-  ✓ "Coupled Quantization enables 1-bit KV cache at <1% perplexity loss [paper X Table 2]"
+BAD (collapses a table into one vague learning):
+  ✗ "Method A outperforms several baselines" — names dropped, no numbers
 
-BAD (collapses the table into one hero-method learning):
-  ✗ "TurboQuant outperforms baselines KIVI, Kitty, MiniKV" — names dropped, no numbers
-
-Also extract BACKGROUND mentions even without numbers: if a paper names a framework (TensorRT-LLM, llama.cpp), format (Q4_K_M, Q4_0, GGUF), or well-known method (PagedAttention, FlashAttention) in its related-work or setup, include at least one learning naming that entity. These are research-landscape anchors.
+Also extract BACKGROUND mentions even without numbers when they anchor the research landscape: named standards, frameworks, ingredients, datasets, cell chemistries, guidelines, or canonical methods.
 
 ## Follow-up questions
 
 Generate 3 follow-up questions that dig DEEPER, not broader:
-  ✓ "What is the perplexity delta for 3-bit TurboQuant on Llama-3 vs Gemma-4?"  — specific, deepens
-  ✗ "What are other quantization methods?"                                        — broader, shallow
+  ✓ "What is the measured delta for named method A on benchmark/population/setup B vs C?"  — specific, deepens
+  ✗ "What are other methods?"                                                           — broader, shallow
 
 Output JSON only.`;
 
@@ -116,22 +116,36 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
   const {
     plan,
     projectDir,
-    breadth = 6,
-    depth = 1,
-    pagesPerQuery = 2,
-    urlsPerQuery = 6,
-    readConcurrency = 4,
+    breadth = positiveIntEnv("HARVEST_BREADTH", 8),
+    depth = positiveIntEnv("HARVEST_DEPTH", 2),
+    pagesPerQuery = positiveIntEnv("HARVEST_PAGES_PER_QUERY", 3),
+    urlsPerQuery = positiveIntEnv("HARVEST_URLS_PER_QUERY", 10),
+    readConcurrency = positiveIntEnv("HARVEST_READ_CONCURRENCY", 6),
   } = input;
+
+  // Budget caps — a broad topic (like an INCI ingredient list) can grind
+  // the deep-recursion loop for 2+ hours. These cap wall-time and total
+  // source volume so a run can't hang the pipeline slot indefinitely.
+  // Env overrides: MAX_HARVEST_MINUTES, MAX_HARVEST_SOURCES.
+  // Default source cap is intentionally high enough for a deep-research run;
+  // smaller demos can lower MAX_HARVEST_SOURCES or HARVEST_* knobs.
+  const maxHarvestMinutes = positiveIntEnv("MAX_HARVEST_MINUTES", 90);
+  const maxHarvestSources = positiveIntEnv("MAX_HARVEST_SOURCES", 400);
+  const harvestDeadlineMs = Date.now() + maxHarvestMinutes * 60 * 1000;
+  const budget = {
+    deadlineMs: harvestDeadlineMs,
+    maxSources: maxHarvestSources,
+    sourcesSoFar: 0,
+  };
 
   const sourcesDir = join(projectDir, "sources");
   const contentDir = join(projectDir, "sources", "content");
   if (!existsSync(sourcesDir)) mkdirSync(sourcesDir, { recursive: true });
   if (!existsSync(contentDir)) mkdirSync(contentDir, { recursive: true });
 
-  // Parallelism cap for harvest: 3 simultaneous subquestions. Each runs
-  // deepResearch (search API + Jina fetches + LEARNINGS LLM call per query).
-  // Endpoint has 5 slots; 3 concurrent keeps slack for other pipeline phases.
-  const HARVEST_CONCURRENCY = 3;
+  // Parallelism cap is provider-aware: qwen/self-hosted stays conservative,
+  // Gemini can fan out more because it is an external API.
+  const HARVEST_CONCURRENCY = config.concurrency.harvest;
 
   // Flatten plan into (question, subquestion) units. Each unit gets one
   // SourceIndex. Per-subquestion cache file: sources/{subquestion.id}.json.
@@ -188,6 +202,20 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
     // question — the LLM-query generator uses both to produce targeted queries.
     const goal = `Research question: ${unit.question.question}\nSubquestion (${unit.subquestion.angle}): ${unit.subquestion.text}`;
 
+    // Budget check before spinning up another subquestion loop.
+    if (Date.now() > budget.deadlineMs) {
+      console.warn(
+        `[harvester] skipping ${header} — harvest time budget exhausted (${maxHarvestMinutes} min)`
+      );
+      return null;
+    }
+    if (budget.sourcesSoFar >= budget.maxSources) {
+      console.warn(
+        `[harvester] skipping ${header} — harvest source budget exhausted (${budget.maxSources})`
+      );
+      return null;
+    }
+
     const result = await deepResearch({
       topic: plan.topic,
       taskGoal: goal,
@@ -199,6 +227,11 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
       learnings: [],
       globalVisited,
       contentDir,
+      budget,
+      // plan.constraints carries the brief's domain_hints/constraints
+      // from the pre-research scope chat. Pinning queries to this domain
+      // prevents off-field matches (titanium-physics on a cosmetics run).
+      domainContext: plan.constraints,
     });
 
     const index: SourceIndex = {
@@ -279,6 +312,12 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
   return allIndices;
 }
 
+interface HarvestBudget {
+  deadlineMs: number;
+  maxSources: number;
+  sourcesSoFar: number;
+}
+
 // Recursive deep-research loop (dzhng-style)
 async function deepResearch(opts: {
   topic: string;
@@ -291,6 +330,8 @@ async function deepResearch(opts: {
   learnings: string[];
   globalVisited: Set<string>;
   contentDir: string;
+  budget?: HarvestBudget;
+  domainContext?: string;
 }): Promise<DeepResearchResult> {
   const {
     topic,
@@ -303,7 +344,23 @@ async function deepResearch(opts: {
     learnings: parentLearnings,
     globalVisited,
     contentDir,
+    budget,
   } = opts;
+  const domainProfile = detectDomainProfile(topic, opts.domainContext);
+
+  const budgetExceeded = (): boolean => {
+    if (!budget) return false;
+    return (
+      Date.now() > budget.deadlineMs || budget.sourcesSoFar >= budget.maxSources
+    );
+  };
+
+  if (budgetExceeded()) {
+    console.warn(
+      `[deep] budget exhausted before depth=${depth} — returning with current learnings`
+    );
+    return { sources: [], learnings: parentLearnings };
+  }
 
   // 1. Generate breadth search queries
   const queries = await generateQueries({
@@ -311,6 +368,8 @@ async function deepResearch(opts: {
     taskGoal,
     priorLearnings: parentLearnings,
     numQueries: breadth,
+    domainContext: opts.domainContext,
+    domainProfile,
   });
 
   const webCount = queries.filter((q) => (q.channel ?? "web") === "web").length;
@@ -389,56 +448,81 @@ async function deepResearch(opts: {
       .sort((a, b) => a.tier - b.tier || a.i - b.i)
       .map((x) => x.r);
 
-    const topUrls: SearchResult[] = [];
-    for (const r of tiered) {
-      const key = normalizeUrl(r.url);
-      if (!key) continue;
-      globalVisited.add(key);
-      topUrls.push(r);
-      if (topUrls.length >= urlsPerQuery) break;
-    }
-
-    if (topUrls.length === 0) {
+    if (tiered.length === 0) {
       console.log(`[deep]   "${query.slice(0, 60)}" — 0 new URLs`);
       continue;
     }
 
-    // 3. Scrape full content via Jina Reader
-    console.log(`[deep]   "${query.slice(0, 60)}" — fetching ${topUrls.length} URLs`);
-    const reads = await readUrls(
-      topUrls.map((r) => r.url),
-      readConcurrency,
-      30000
-    );
-
-    // Attach content to sources, persist content to disk
+    // 3. Scrape full content via Jina Reader. Do not stop at the first
+    // urlsPerQuery candidates: many search results are PDFs, bot-blocked,
+    // duplicate mirrors, or pages Jina cannot read. Keep pulling from the
+    // ranked candidate list until we have enough readable sources.
     const contentfulSources: SearchResult[] = [];
     const fullContents: string[] = [];
-    for (let i = 0; i < topUrls.length; i++) {
-      const src = topUrls[i]!;
-      const read = reads[i]!;
-      if (read?.success && read.content.length > 200) {
-        src.raw_content = read.content.slice(0, 8000);
-        contentfulSources.push(src);
-        // Truncate per-source content to keep LLM prefill time manageable
-        // (primary papers can be 30-80kB; at 6 sources/query that's 300-500kB
-        // per call which times out Cloudflare proxy at ~100s prefill).
-        fullContents.push(read.content.slice(0, 15000));
+    let attempted = 0;
+    let cursor = 0;
+    while (
+      cursor < tiered.length &&
+      contentfulSources.length < urlsPerQuery &&
+      !budgetExceeded()
+    ) {
+      const remaining = urlsPerQuery - contentfulSources.length;
+      const fetchBatchSize = Math.max(readConcurrency, remaining);
+      const batch: SearchResult[] = [];
 
-        const hash = hashUrl(src.url);
-        writeFileSync(
-          join(contentDir, `${hash}.md`),
-          `# ${src.title}\n\nURL: ${src.url}\n\n---\n\n${read.content}`
-        );
+      while (cursor < tiered.length && batch.length < fetchBatchSize) {
+        const src = tiered[cursor++]!;
+        const key = normalizeUrl(src.url);
+        if (!key || globalVisited.has(key)) continue;
+        globalVisited.add(key);
+        batch.push(src);
+      }
+      if (batch.length === 0) break;
+
+      attempted += batch.length;
+      console.log(
+        `[deep]   "${query.slice(0, 60)}" — fetching ${batch.length} URLs (${contentfulSources.length}/${urlsPerQuery} readable so far)`
+      );
+      const reads = await readUrls(
+        batch.map((r) => r.url),
+        readConcurrency,
+        30000
+      );
+
+      for (let i = 0; i < batch.length; i++) {
+        if (contentfulSources.length >= urlsPerQuery || budgetExceeded()) break;
+        const src = batch[i]!;
+        const read = reads[i]!;
+        if (read?.success && read.content.length > 200) {
+          src.raw_content = read.content.slice(0, 8000);
+          contentfulSources.push(src);
+          // Truncate per-source content to keep LLM prefill time manageable
+          // (primary papers can be 30-80kB; at 10 sources/query that's often
+          // hundreds of kB per call).
+          fullContents.push(read.content.slice(0, 15000));
+
+          const hash = hashUrl(src.url);
+          writeFileSync(
+            join(contentDir, `${hash}.md`),
+            `# ${src.title}\n\nURL: ${src.url}\n\n---\n\n${read.content}`
+          );
+        }
       }
     }
 
     allSources.push(...contentfulSources);
+    if (budget) budget.sourcesSoFar += contentfulSources.length;
     console.log(
-      `[deep]   "${query.slice(0, 60)}" — ${contentfulSources.length}/${topUrls.length} readable`
+      `[deep]   "${query.slice(0, 60)}" — ${contentfulSources.length}/${attempted} readable`
     );
 
     if (contentfulSources.length === 0) continue;
+    if (budgetExceeded()) {
+      console.warn(
+        `[deep] budget exhausted after query "${query.slice(0, 40)}" — stopping this depth level`
+      );
+      break;
+    }
 
     // 4. Extract learnings from full content
     try {
@@ -448,6 +532,7 @@ async function deepResearch(opts: {
         contents: fullContents,
         numLearnings: 5,
         numFollowUps: 3,
+        domainProfile,
       });
       allLearnings.push(...extracted.learnings);
       followUpQuestions.push(...extracted.follow_up_questions);
@@ -524,6 +609,7 @@ async function deepResearch(opts: {
             contents: snowballContents,
             numLearnings: 8,
             numFollowUps: 0,
+            domainProfile,
           });
           allLearnings.push(...extracted.learnings);
           console.log(`[snowball]   +${extracted.learnings.length} learnings from snowball`);
@@ -534,8 +620,8 @@ async function deepResearch(opts: {
     }
   }
 
-  // 5. Recurse deeper if depth > 0
-  if (depth > 1 && followUpQuestions.length > 0) {
+  // 5. Recurse deeper if depth > 0 and budget allows
+  if (depth > 1 && followUpQuestions.length > 0 && !budgetExceeded()) {
     const newBreadth = Math.max(1, Math.ceil(breadth / 2));
     const newDepth = depth - 1;
 
@@ -570,8 +656,17 @@ async function generateQueries(args: {
   taskGoal: string;
   priorLearnings: string[];
   numQueries: number;
+  domainContext?: string;
+  domainProfile?: DomainProfile;
 }): Promise<{ query: string; research_goal: string; channel?: string }[]> {
-  const { topic, taskGoal, priorLearnings, numQueries } = args;
+  const {
+    topic,
+    taskGoal,
+    priorLearnings,
+    numQueries,
+    domainContext,
+    domainProfile = detectDomainProfile(topic, domainContext),
+  } = args;
 
   // Keep prior learnings compact — 10 latest, each truncated to 200 chars
   const priorTrimmed = priorLearnings
@@ -583,14 +678,24 @@ async function generateQueries(args: {
     ? `\n\nPrior learnings (go DEEPER, do not repeat):\n- ${priorTrimmed}`
     : "";
 
+  // Domain context comes from the pre-research scope chat (via
+  // plan.constraints). It carries "Domain: cosmetic skincare" kind of
+  // hints that tell the query generator which journals/phrasing to
+  // prefer. Without this, a topic with "titanium" in an INCI list
+  // ends up retrieving physics dark-matter detector papers.
+  const domainSection = domainContext
+    ? `\n\nDOMAIN CONTEXT (pin queries to this field — do NOT drift):\n${domainContext.slice(0, 1000)}`
+    : "";
+  const profileSection = `\n\n${domainPromptBlock(domainProfile)}`;
+
   const webCount = Math.ceil(numQueries * 0.6);
   const academicCount = numQueries - webCount;
-  const prompt = `Research topic: ${topic}\nCurrent goal: ${taskGoal.slice(0, 500)}${priorSection}\n\nGenerate EXACTLY ${numQueries} diverse queries: ${webCount} with channel="web" and ${academicCount} with channel="academic". Return ONLY JSON.`;
+  const prompt = `Research topic: ${topic}\nCurrent goal: ${taskGoal.slice(0, 500)}${domainSection}${profileSection}${priorSection}\n\nGenerate EXACTLY ${numQueries} diverse queries: ${webCount} with channel="web" and ${academicCount} with channel="academic". Return ONLY JSON.`;
 
   const { object } = await generateJson({
     schema: SerpQueriesSchema,
     system: QUERY_GEN_SYSTEM,
-    prompt: prompt.slice(0, 6000),
+    prompt: prompt.slice(0, 9000),
     temperature: 0.4,
     endpoint: config.endpoints.harvester,
   });
@@ -604,14 +709,23 @@ export async function extractLearnings(args: {
   contents: string[];
   numLearnings: number;
   numFollowUps: number;
+  domainProfile?: DomainProfile;
 }) {
-  const { query, researchGoal, contents, numLearnings, numFollowUps } = args;
+  const {
+    query,
+    researchGoal,
+    contents,
+    numLearnings,
+    numFollowUps,
+    domainProfile = detectDomainProfile(`${query}\n${researchGoal}`),
+  } = args;
 
   const promptPrefix = `Query: ${query}\nGoal: ${researchGoal}\n\nExtract at most ${numLearnings} concise learnings with specific numbers/names/metrics. Also generate at most ${numFollowUps} follow-up questions to deepen research.\n\nSources:\n`;
 
   // Build batches that fit within token budget
   const budget = await inputTokenBudget();
-  const systemTokens = await countTokens(LEARNINGS_SYSTEM);
+  const learningsSystem = `${LEARNINGS_SYSTEM}\n\n${learningGuidanceBlock(domainProfile)}`;
+  const systemTokens = await countTokens(learningsSystem);
   const prefixTokens = await countTokens(promptPrefix);
   const overhead = systemTokens + prefixTokens + 500; // buffer for schema hint
   const batchBudget = budget - overhead;
@@ -654,7 +768,7 @@ export async function extractLearnings(args: {
     const batchBlock = batches[b]!.join("");
     const { object } = await generateJson({
       schema: LearningsSchema,
-      system: LEARNINGS_SYSTEM,
+      system: learningsSystem,
       prompt: `${promptPrefix}${batchBlock}`,
       temperature: 0.2,
       endpoint: config.endpoints.harvester,
@@ -692,6 +806,12 @@ export async function extractLearnings(args: {
 }
 
 // --- utils ---
+
+function positiveIntEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name] ?? "");
+  if (Number.isFinite(value) && value > 0) return Math.floor(value);
+  return fallback;
+}
 
 function normalizeUrl(url: string): string {
   if (!url) return "";

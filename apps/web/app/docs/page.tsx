@@ -4,14 +4,14 @@ export const dynamic = "force-dynamic";
 
 export default function DocsPage() {
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-10 space-y-8">
+    <div className="max-w-[1320px] mx-auto px-4 md:px-10 py-6 md:py-10 space-y-8">
       <header className="space-y-2 border-b border-border/50 pb-6">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] uppercase tracking-widest bg-primary/10 text-primary border border-primary/20 font-semibold">
             API
           </span>
           <span className="text-[10px] text-muted-foreground font-mono">
-            v0.2 · REST / JSON
+            v0.3 · REST / JSON
           </span>
         </div>
         <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">

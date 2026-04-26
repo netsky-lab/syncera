@@ -14,11 +14,33 @@ import type { NextRequest } from "next/server";
 const EXCLUDED_PREFIXES = [
   "/_next/",
   "/favicon",
+  "/robots.txt",
   "/api/health",
-  "/api/auth/", // login/signup/me/logout — must be reachable pre-auth
   "/login",
   "/signup",
+  "/forgot-password",
+  "/reset-password",
+  // These API routes serve email-based flows and must be reachable
+  // without a session cookie.
+  "/api/auth/verify",
+  "/api/auth/password-reset-request",
+  "/api/auth/password-reset-confirm",
+  // Public landing + showcase project pages. getProject(slug, viewerUid=null)
+  // only returns admin-owned (showcase) projects for anonymous viewers, so
+  // private projects still 404 cleanly without a session.
+  "/projects/",
+  // Share-token URLs — anonymous access by design. The token itself
+  // is the capability; resolveShareToken gates the page handler.
+  "/shared/",
 ];
+// Root `/` is public too — dashboard renders a visitor-friendly hero +
+// showcase for anon, full "Your research" view for logged-in users.
+const PUBLIC_ROOT = true;
+// Note: /api/auth/* is NOT excluded. It flows through the /api/ branch
+// below which applies rate limiting (60 req/min per IP for unauth
+// requests) — protects against brute-force login + signup enumeration.
+// The routes themselves are the auth gate and don't need a session
+// cookie pre-check.
 
 const SESSION_COOKIE = "rl_session";
 
@@ -27,11 +49,26 @@ async function verifySessionToken(token: string | null | undefined): Promise<boo
   const [encoded, sig] = token.split(".");
   if (!encoded || !sig) return false;
   try {
-    const s = process.env.SESSION_SECRET ?? process.env.BASIC_AUTH_PASS ?? "dev-insecure-fallback-change-me";
-    const keyMaterial = new TextEncoder().encode(s.padEnd(32, "x"));
+    // Secret derivation MUST match lib/sessions.ts exactly, otherwise
+    // cookies signed by the login route fail to verify here and users
+    // get bounced to /login on every authed page navigation.
+    const envSecret = process.env.SESSION_SECRET;
+    let keyStr: string;
+    if (envSecret && envSecret.length >= 32) {
+      keyStr = envSecret;
+    } else {
+      keyStr =
+        (
+          (process.env.BASIC_AUTH_PASS ?? "dev-insecure-fallback-change-me") +
+          "::session"
+        ).padEnd(32, "x");
+    }
+    const keyBuf = new ArrayBuffer(keyStr.length);
+    const view = new Uint8Array(keyBuf);
+    for (let i = 0; i < keyStr.length; i++) view[i] = keyStr.charCodeAt(i) & 0xff;
     const key = await crypto.subtle.importKey(
       "raw",
-      keyMaterial,
+      keyBuf,
       { name: "HMAC", hash: "SHA-256" },
       false,
       ["sign"]
@@ -107,11 +144,12 @@ function identityForRateLimit(req: NextRequest): string {
   return `ip:${ip.split(",")[0]!.trim()}`;
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   for (const p of EXCLUDED_PREFIXES) {
     if (pathname.startsWith(p)) return NextResponse.next();
   }
+  if (PUBLIC_ROOT && pathname === "/") return NextResponse.next();
 
   const origin = req.headers.get("origin");
   const isApi = pathname.startsWith("/api/");

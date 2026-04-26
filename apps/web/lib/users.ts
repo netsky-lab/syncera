@@ -16,21 +16,37 @@ export interface User {
   role: Role;
   created_at: number;
   last_login_at: number | null;
+  // Per-user webhook: fires on run.completed / run.failed for runs owned
+  // by this user. URL + secret stored plaintext (URL isn't sensitive;
+  // secret has to be readable to sign outbound requests). Both null means
+  // webhooks disabled for this user.
+  webhook_url?: string | null;
+  webhook_secret?: string | null;
+  // Email verified via confirmation link. Historical users default to
+  // true (back-compat: missing field treated as verified) so the check
+  // only gates NEW signups post-2026-04-21.
+  email_verified?: boolean;
 }
 
-const STORE_PATH =
-  process.env.USER_STORE_PATH ??
-  join(process.cwd(), "data", "users.json");
+// Resolve per-call so tests (and any env changes) take effect without
+// needing a module reload.
+function storePath(): string {
+  return (
+    process.env.USER_STORE_PATH ??
+    join(process.cwd(), "data", "users.json")
+  );
+}
 
 function ensureDir() {
-  const dir = dirname(STORE_PATH);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const dir = dirname(storePath());
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
 }
 
 function readAll(): User[] {
-  if (!existsSync(STORE_PATH)) return [];
+  const p = storePath();
+  if (!existsSync(p)) return [];
   try {
-    return JSON.parse(readFileSync(STORE_PATH, "utf-8"));
+    return JSON.parse(readFileSync(p, "utf-8"));
   } catch {
     return [];
   }
@@ -38,7 +54,10 @@ function readAll(): User[] {
 
 function writeAll(users: User[]) {
   ensureDir();
-  writeFileSync(STORE_PATH, JSON.stringify(users, null, 2));
+  // mode 0o600 — contains scrypt hashes; world-readable would still not
+  // leak plaintext passwords but tightens the blast radius of any
+  // accidental read permission on the volume.
+  writeFileSync(storePath(), JSON.stringify(users, null, 2), { mode: 0o600 });
 }
 
 function hashPassword(password: string): string {
@@ -77,6 +96,7 @@ export function createUser(params: {
   email: string;
   password: string;
   role?: Role;
+  emailVerified?: boolean;
 }): { ok: true; user: Omit<User, "password_hash"> } | { ok: false; error: string } {
   const email = params.email.toLowerCase().trim();
   if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
@@ -96,11 +116,33 @@ export function createUser(params: {
     role: params.role ?? "user",
     created_at: Date.now(),
     last_login_at: null,
+    email_verified: params.emailVerified ?? false,
   };
   all.push(user);
   writeAll(all);
   const { password_hash, ...rest } = user;
   return { ok: true, user: rest };
+}
+
+export function markEmailVerified(userId: string): boolean {
+  const all = readAll();
+  const idx = all.findIndex((u) => u.id === userId);
+  if (idx === -1) return false;
+  all[idx]!.email_verified = true;
+  writeAll(all);
+  return true;
+}
+
+export function setPasswordByUid(userId: string, newPassword: string): { ok: true } | { ok: false; error: string } {
+  if (!newPassword || newPassword.length < 8) {
+    return { ok: false, error: "Password must be at least 8 characters" };
+  }
+  const all = readAll();
+  const idx = all.findIndex((u) => u.id === userId);
+  if (idx === -1) return { ok: false, error: "User not found" };
+  all[idx]!.password_hash = hashPassword(newPassword);
+  writeAll(all);
+  return { ok: true };
 }
 
 export function authenticate(
@@ -140,6 +182,30 @@ export function updatePassword(
   all[idx]!.password_hash = hashPassword(newPassword);
   writeAll(all);
   return { ok: true };
+}
+
+export function setWebhook(
+  userId: string,
+  config: { url: string | null; secret: string | null }
+): { ok: true } | { ok: false; error: string } {
+  const all = readAll();
+  const idx = all.findIndex((u) => u.id === userId);
+  if (idx === -1) return { ok: false, error: "User not found" };
+  if (config.url && !/^https?:\/\/.+/.test(config.url)) {
+    return { ok: false, error: "Webhook URL must be http(s)://" };
+  }
+  all[idx]!.webhook_url = config.url;
+  all[idx]!.webhook_secret = config.secret;
+  writeAll(all);
+  return { ok: true };
+}
+
+export function getWebhookTarget(
+  userId: string
+): { url: string; secret: string } | null {
+  const u = findUserById(userId);
+  if (!u?.webhook_url) return null;
+  return { url: u.webhook_url, secret: u.webhook_secret ?? "" };
 }
 
 export function deleteUser(id: string): boolean {

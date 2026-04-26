@@ -1,6 +1,8 @@
-import { getProject } from "@/lib/projects";
+import { getProject, listBranches } from "@/lib/projects";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { verifySession, COOKIE_NAME } from "@/lib/sessions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,6 +11,13 @@ import { Markdown } from "@/components/markdown";
 import { SourcesList } from "@/components/sources-list";
 import { ProjectDocument } from "@/components/project-document";
 import { ProjectAdminActions } from "@/components/project-admin-actions";
+import { ProjectRerunButton } from "@/components/project-rerun-button";
+import { ForkButton } from "@/components/fork-button";
+import { ShareButton } from "@/components/share-button";
+import { ProjectRunBanner } from "@/components/project-run-banner";
+import { ComparePicker } from "@/components/compare-picker";
+import { TopicHeader } from "@/components/topic-header";
+import { ProjectWorkflow } from "@/components/project-workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +76,31 @@ function verdictIcon(verdict: string): string {
   }
 }
 
+function StatusPill({
+  status,
+}: {
+  status: "verified" | "pending" | "running";
+}) {
+  const styles: Record<string, string> = {
+    verified: "bg-accent-sage/10 text-accent-sage",
+    pending: "bg-accent-amber/10 text-accent-amber",
+    running: "bg-accent-rust/15 text-accent-rust",
+  };
+  const dotCls: Record<string, string> = {
+    verified: "bg-accent-sage",
+    pending: "bg-accent-amber",
+    running: "bg-accent-rust animate-pulse",
+  };
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 pl-2 pr-2.5 py-0.5 rounded-full text-[11px] font-medium ${styles[status]}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${dotCls[status]}`} />
+      {status}
+    </span>
+  );
+}
+
 function ConfidenceRing({ value }: { value: number }) {
   const pct = Math.round(value * 100);
   const r = 20;
@@ -97,13 +131,27 @@ function ConfidenceRing({ value }: { value: number }) {
   );
 }
 
+// Cut mid-word with ellipsis. Long INCI-list topics flooded the breadcrumb
+// and pushed interactive elements off-screen — 80 chars fits one line at
+// 12px on a 1024px+ viewport and keeps the homepage-like proportions.
+function truncateTopic(s: string, n: number): string {
+  if (s.length <= n) return s;
+  return s.slice(0, n).trimEnd() + "…";
+}
+
 export default async function ProjectPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const project = getProject(slug);
+  const jar = await cookies();
+  const viewerUid = verifySession(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
+  const viewerUser = viewerUid
+    ? (await import("@/lib/users")).findUserById(viewerUid)
+    : null;
+  const isViewerAdmin = viewerUser?.role === "admin";
+  const project = getProject(slug, viewerUid);
   if (!project) notFound();
 
   const { plan, claims, criticReport, facts, analysisReport, report, sources, units: taskSources, verification, schema } = project;
@@ -120,90 +168,17 @@ export default async function ProjectPage({
   const byProvider: Record<string, number> = sources?.by_provider ?? {};
   const isQuestionFirst = schema === "question_first";
 
-  // Question-first reading-mode layout (Perplexity-style document view).
+  // Question-first reading-mode layout — Claude-inspired warm reader.
   // Legacy hypothesis-first keeps the old tabs layout below.
   if (isQuestionFirst) {
     return (
-      <div className="min-h-screen">
-        {/* Minimal top bar (adapted for mobile) */}
-        <div className="border-b border-border/50 bg-background/80 backdrop-blur-sm sticky top-0 md:top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-start sm:items-center gap-2 sm:gap-4 flex-wrap sm:flex-nowrap">
-            <Link
-              href="/"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 shrink-0"
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path
-                  d="M15 18l-6-6 6-6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              Projects
-            </Link>
-            <div className="flex-1 min-w-0 order-last sm:order-none basis-full sm:basis-auto">
-              <h1 className="text-[13px] sm:text-[15px] font-semibold tracking-tight leading-snug line-clamp-2 sm:truncate">
-                {plan.topic}
-              </h1>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <Badge
-                variant="outline"
-                className="text-[10px] bg-sky-500/10 text-sky-300 border-sky-500/30"
-              >
-                question-first
-              </Badge>
-              <span className="text-[11px] text-muted-foreground font-mono">
-                {questions.length}Q · {facts.length}F · {totalSources}S
-              </span>
-              <a
-                href={`/api/projects/${slug}/pdf`}
-                className="text-xs px-2.5 sm:px-3 py-1.5 rounded-md border hover:bg-accent transition-colors inline-flex items-center gap-1.5"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path
-                    d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <polyline
-                    points="7 10 12 15 17 10"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <line
-                    x1="12"
-                    y1="15"
-                    x2="12"
-                    y2="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                PDF
-              </a>
-              <ProjectAdminActions slug={slug} />
-            </div>
-          </div>
-        </div>
-        <ProjectDocument project={project} />
-      </div>
+      <ProjectWorkflow
+        project={project}
+        slug={slug}
+        viewerUid={viewerUid}
+        isViewerAdmin={isViewerAdmin}
+        branches={listBranches(slug, viewerUid)}
+      />
     );
   }
 
@@ -262,6 +237,8 @@ export default async function ProjectPage({
             </svg>
             Export PDF
           </a>
+          <ProjectRerunButton topic={plan.topic} />
+          <ProjectAdminActions slug={slug} ownerUid={project.owner_uid} />
           {criticReport && <ConfidenceRing value={criticReport.overall_confidence} />}
         </div>
       </header>

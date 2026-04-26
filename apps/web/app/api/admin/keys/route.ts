@@ -1,9 +1,8 @@
-// Admin endpoints for API key management. Protected by Basic Auth in
-// middleware — middleware skips the API-key check on /api/admin/* paths,
-// forcing Basic Auth only, so a compromised API key can't mint more keys.
+// Admin endpoints for API key management. Session-gated (admin role),
+// NOT API-key-gated — a compromised API key can't mint more keys.
 
 import { listKeys, createKey } from "@/lib/keys";
-import { requireBasicAuth } from "@/lib/auth";
+import { requireBasicAuth, viewerUidFromRequest } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,7 +18,11 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
   const body = await request.json().catch(() => ({}));
   const name = String(body.name ?? "").trim();
-  const { id, raw, prefix } = createKey(name);
+  // Scope the minted key to the admin who created it — keys inherit the
+  // owner's project visibility, so a consumer app auth'd with this key
+  // reads the admin's research artifacts, not just showcase.
+  const ownerUid = viewerUidFromRequest(request);
+  const { id, raw, prefix } = createKey(name, ownerUid);
   return Response.json(
     {
       id,

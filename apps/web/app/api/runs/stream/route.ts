@@ -1,8 +1,14 @@
 import { getRun, type RunEvent } from "@/lib/runner";
+import { requireAuth, viewerUidFromRequest } from "@/lib/auth";
+import { findUserById } from "@/lib/users";
+import { canView } from "@/lib/projects";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  const auth = requireAuth(request);
+  if (!auth.ok) return auth.response;
+
   const url = new URL(request.url);
   const runId = url.searchParams.get("id");
   if (!runId) {
@@ -10,6 +16,19 @@ export async function GET(request: Request) {
   }
   const run = getRun(runId);
   if (!run) {
+    return new Response("Run not found", { status: 404 });
+  }
+
+  // Visibility: run owner OR admin OR project-visible to caller.
+  const viewerUid = viewerUidFromRequest(request);
+  const viewerIsAdmin = viewerUid
+    ? findUserById(viewerUid)?.role === "admin"
+    : false;
+  const canSee =
+    viewerIsAdmin ||
+    (run.ownerUid && run.ownerUid === viewerUid) ||
+    canView(run.slug, viewerUid);
+  if (!canSee) {
     return new Response("Run not found", { status: 404 });
   }
 

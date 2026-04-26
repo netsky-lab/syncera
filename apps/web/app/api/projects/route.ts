@@ -2,7 +2,7 @@
 // Consumed by external apps to enumerate available research artifacts.
 
 import { listProjects } from "@/lib/projects";
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, viewerUidFromRequest } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -10,7 +10,8 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const auth = requireAuth(request);
   if (!auth.ok) return auth.response;
-  const projects = listProjects();
+  const viewerUid = viewerUidFromRequest(request);
+  const projects = listProjects(viewerUid);
   return Response.json({
     count: projects.length,
     projects: projects.map((p) => ({
@@ -28,6 +29,8 @@ export async function GET(request: Request) {
       has_report: p.hasReport,
       confidence: p.confidence, // 0 for question-first, valid for hypothesis-first
       generated_at: p.generatedAt,
+      owner_uid: p.owner_uid,
+      is_showcase: p.is_showcase,
     })),
   });
 }

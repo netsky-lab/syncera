@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /$
+Allow: /projects/
+Allow: /docs
+Allow: /api/openapi.json
+Disallow: /login
+Disallow: /signup
+Disallow: /settings
+Disallow: /api/auth/
+Disallow: /api/admin/
+Disallow: /api/runs/

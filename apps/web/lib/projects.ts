@@ -1,17 +1,19 @@
-import { readFileSync, readdirSync, existsSync } from "fs";
+import { readFileSync, readdirSync, existsSync, writeFileSync } from "fs";
 import { join } from "path";
+import { findUserById, listUsers } from "@/lib/users";
 
-// Resolve projects directory:
+// Resolve projects directory per-call so env changes and test setup take
+// effect without a module reload.
 //   1. PROJECTS_DIR env var wins (explicit override).
 //   2. If cwd/projects exists, use that (production standalone container).
 //   3. Otherwise walk up to monorepo root (dev mode where cwd=apps/web).
-const PROJECTS_DIR = (() => {
+function projectsDir(): string {
   if (process.env.PROJECTS_DIR) return process.env.PROJECTS_DIR;
   const cwd = process.cwd();
   const cwdProjects = join(cwd, "projects");
   if (existsSync(cwdProjects)) return cwdProjects;
   return join(cwd, "..", "..", "projects");
-})();
+}
 
 export type Schema = "question_first" | "hypothesis_first" | "empty";
 
@@ -34,6 +36,8 @@ export interface ProjectSummary {
   confidence: number; // hypothesis-first only
   hasReport: boolean;
   generatedAt: string;
+  owner_uid: string | null;
+  is_showcase: boolean; // owner is an admin → visible to everyone
 }
 
 export interface ProjectDetail {
@@ -51,6 +55,16 @@ export interface ProjectDetail {
   sources: any | null;
   units: any[]; // per-task (old) or per-subquestion (new) source index files
   verification: any | null;
+  usageSummary: any | null;
+  epistemicGraph: any | null;
+  owner_uid: string | null;
+  is_showcase: boolean;
+  forkMeta: {
+    source_slug: string;
+    source_topic: string;
+    forked_at: number;
+    suffix: string | null;
+  } | null;
 }
 
 function readJson(path: string): any {
@@ -62,18 +76,82 @@ function readJson(path: string): any {
   }
 }
 
-export function listProjects(): ProjectSummary[] {
-  if (!existsSync(PROJECTS_DIR)) return [];
+// ─── Ownership ────────────────────────────────────────────────────────────
 
-  const dirs = readdirSync(PROJECTS_DIR, { withFileTypes: true })
+function ownerPath(slug: string): string {
+  return join(projectsDir(), slug, ".owner");
+}
+
+export function getOwner(slug: string): string | null {
+  const p = ownerPath(slug);
+  if (!existsSync(p)) return null;
+  try {
+    return readFileSync(p, "utf-8").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setOwner(slug: string, uid: string): void {
+  writeFileSync(ownerPath(slug), uid, { mode: 0o600 });
+}
+
+// Visibility rule, in order:
+//   1. Viewer owns the project
+//   2. Viewer has role=admin (admins see everything)
+//   3. Project's owner has role=admin → treated as showcase for everyone
+function isShowcase(ownerUid: string | null): boolean {
+  if (!ownerUid) return false;
+  const owner = findUserById(ownerUid);
+  return owner?.role === "admin";
+}
+
+function isAdmin(viewerUid: string | null): boolean {
+  if (!viewerUid) return false;
+  return findUserById(viewerUid)?.role === "admin";
+}
+
+export function canView(slug: string, viewerUid: string | null): boolean {
+  const owner = getOwner(slug);
+  if (owner && viewerUid && owner === viewerUid) return true;
+  if (isAdmin(viewerUid)) return true;
+  return isShowcase(owner);
+}
+
+// NOTE: auto-migration of unowned projects was removed 2026-04-20. It
+// blanket-assigned every orphan to the first admin → admin-role →
+// is_showcase=true → visible to every signed-in user. When the runner
+// ownership race caused new user runs to land as root-owned (no .owner
+// written), those private projects silently became public. Privacy leak.
+// Unowned projects now stay invisible (except to admin god-viewer) until
+// operator manually assigns. Legacy qwen3 project was backfilled by hand.
+
+// ─── Queries ──────────────────────────────────────────────────────────────
+
+export function listProjects(viewerUid: string | null = null): ProjectSummary[] {
+  const root = projectsDir();
+  if (!existsSync(root)) return [];
+
+  const viewerIsAdmin = isAdmin(viewerUid);
+
+  const dirs = readdirSync(root, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => d.name);
 
   return dirs
     .map((slug) => {
-      const dir = join(PROJECTS_DIR, slug);
+      const dir = join(root, slug);
       const plan = readJson(join(dir, "plan.json"));
       if (!plan) return null;
+
+      const owner_uid = getOwner(slug);
+      const is_showcase = isShowcase(owner_uid);
+      // Visibility: own, admin viewer, or showcase.
+      const canSee =
+        is_showcase ||
+        viewerIsAdmin ||
+        (viewerUid && owner_uid === viewerUid);
+      if (!canSee) return null;
 
       const schema = detectSchema(plan);
       const claims = readJson(join(dir, "claims.json")) ?? [];
@@ -94,15 +172,122 @@ export function listProjects(): ProjectSummary[] {
         confidence: critic?.overall_confidence ?? 0,
         hasReport: existsSync(join(dir, "REPORT.md")),
         generatedAt: plan.generated_at ?? "",
+        owner_uid,
+        is_showcase,
       } satisfies ProjectSummary;
     })
     .filter(Boolean) as ProjectSummary[];
 }
 
-export function getProject(slug: string): ProjectDetail | null {
-  const dir = join(PROJECTS_DIR, slug);
+// List projects that are forks/extends of `slug` or siblings to `slug`
+// under a common parent. Visibility-gated so private branches from other
+// users don't leak. Used by the "Branches" rail card on the project
+// detail page.
+export function listBranches(
+  slug: string,
+  viewerUid: string | null = null
+): {
+  children: ProjectSummary[];
+  parent: ProjectSummary | null;
+  siblings: ProjectSummary[];
+} {
+  const root = projectsDir();
+  if (!existsSync(root)) return { children: [], parent: null, siblings: [] };
+
+  const viewerIsAdmin = isAdmin(viewerUid);
+  const selfFork = readJson(join(root, slug, "fork.meta.json"));
+  const parentSlug: string | null = selfFork?.source_slug ?? null;
+
+  const canSee = (ownerUid: string | null) =>
+    isShowcase(ownerUid) ||
+    viewerIsAdmin ||
+    (viewerUid && ownerUid === viewerUid);
+
+  const summaries = new Map<string, ProjectSummary & { forkMeta: any }>();
+  for (const d of readdirSync(root, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue;
+    if (d.name === slug) continue;
+    const dir = join(root, d.name);
+    const plan = readJson(join(dir, "plan.json"));
+    if (!plan) continue;
+    const owner_uid = getOwner(d.name);
+    if (!canSee(owner_uid)) continue;
+    const forkMeta = readJson(join(dir, "fork.meta.json"));
+    const facts = readJson(join(dir, "facts.json")) ?? [];
+    const sourcesIdx = readJson(join(dir, "sources", "index.json"));
+    summaries.set(d.name, {
+      slug: d.name,
+      topic: plan.topic ?? d.name,
+      schema: detectSchema(plan),
+      hypotheses: plan.hypotheses?.length ?? 0,
+      questions: plan.questions?.length ?? 0,
+      claims: 0,
+      facts: Array.isArray(facts) ? facts.length : 0,
+      sources: sourcesIdx?.total_sources ?? 0,
+      learnings: sourcesIdx?.total_learnings ?? 0,
+      confidence: 0,
+      hasReport: existsSync(join(dir, "REPORT.md")),
+      generatedAt: plan.generated_at ?? "",
+      owner_uid,
+      is_showcase: isShowcase(owner_uid),
+      forkMeta,
+    } as any);
+  }
+
+  const children = [...summaries.values()].filter(
+    (p) => p.forkMeta?.source_slug === slug
+  );
+  const siblings = parentSlug
+    ? [...summaries.values()].filter(
+        (p) => p.forkMeta?.source_slug === parentSlug
+      )
+    : [];
+  const parent = parentSlug
+    ? (() => {
+        const dir = join(root, parentSlug);
+        const plan = readJson(join(dir, "plan.json"));
+        if (!plan) return null;
+        const owner_uid = getOwner(parentSlug);
+        if (!canSee(owner_uid)) return null;
+        const facts = readJson(join(dir, "facts.json")) ?? [];
+        const sourcesIdx = readJson(join(dir, "sources", "index.json"));
+        return {
+          slug: parentSlug,
+          topic: plan.topic ?? parentSlug,
+          schema: detectSchema(plan),
+          hypotheses: plan.hypotheses?.length ?? 0,
+          questions: plan.questions?.length ?? 0,
+          claims: 0,
+          facts: Array.isArray(facts) ? facts.length : 0,
+          sources: sourcesIdx?.total_sources ?? 0,
+          learnings: sourcesIdx?.total_learnings ?? 0,
+          confidence: 0,
+          hasReport: existsSync(join(dir, "REPORT.md")),
+          generatedAt: plan.generated_at ?? "",
+          owner_uid,
+          is_showcase: isShowcase(owner_uid),
+        } satisfies ProjectSummary;
+      })()
+    : null;
+
+  return { children, parent, siblings };
+}
+
+export function getProject(
+  slug: string,
+  viewerUid: string | null = null
+): ProjectDetail | null {
+  const dir = join(projectsDir(), slug);
   const plan = readJson(join(dir, "plan.json"));
   if (!plan) return null;
+
+  const owner_uid = getOwner(slug);
+  const is_showcase = isShowcase(owner_uid);
+  const canSee =
+    is_showcase ||
+    isAdmin(viewerUid) ||
+    (viewerUid && owner_uid === viewerUid);
+  if (!canSee) return null;
 
   const schema = detectSchema(plan);
 
@@ -114,6 +299,8 @@ export function getProject(slug: string): ProjectDetail | null {
   const report = existsSync(reportPath) ? readFileSync(reportPath, "utf-8") : null;
   const sources = readJson(join(dir, "sources", "index.json"));
   const verification = readJson(join(dir, "verification.json"));
+  const usageSummary = readJson(join(dir, "llm_usage_summary.json"));
+  const epistemicGraph = readJson(join(dir, "epistemic_graph.json"));
 
   // Per-unit source files: old schema uses T<n>.json, new schema uses Q<n>[.<m>].json
   const sourcesDir = join(dir, "sources");
@@ -128,18 +315,24 @@ export function getProject(slug: string): ProjectDetail | null {
         const t = JSON.parse(readFileSync(join(sourcesDir, f), "utf-8"));
         const thin = {
           ...t,
-          results: (t.results ?? []).map((r: any) => ({
-            title: r.title,
-            url: r.url,
-            snippet: r.snippet,
-            provider: r.provider,
-            query: r.query,
-          })),
+          results: (t.results ?? []).map((r: any) => {
+            const row: any = {
+              title: r.title,
+              url: r.url,
+              snippet: r.snippet,
+              provider: r.provider,
+              query: r.query,
+            };
+            if (r.relevance) row.relevance = r.relevance;
+            return row;
+          }),
         };
         units.push(thin);
       } catch {}
     }
   }
+
+  const forkMeta = readJson(join(dir, "fork.meta.json"));
 
   return {
     slug,
@@ -153,5 +346,17 @@ export function getProject(slug: string): ProjectDetail | null {
     sources,
     units,
     verification,
+    usageSummary,
+    epistemicGraph,
+    owner_uid,
+    is_showcase,
+    forkMeta: forkMeta
+      ? {
+          source_slug: String(forkMeta.source_slug ?? ""),
+          source_topic: String(forkMeta.source_topic ?? ""),
+          forked_at: Number(forkMeta.forked_at ?? 0),
+          suffix: forkMeta.suffix ?? null,
+        }
+      : null,
   };
 }
