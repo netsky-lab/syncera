@@ -43,6 +43,7 @@ type Branches = {
 type TabId =
   | "brief"
   | "claims"
+  | "debt"
   | "cognition"
   | "sources"
   | "coverage"
@@ -64,6 +65,7 @@ type SourceRow = {
 const tabs: { id: TabId; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { id: "report", label: "Report", icon: FileText },
   { id: "claims", label: "Claims", icon: Network },
+  { id: "debt", label: "Debt", icon: AlertTriangle },
   { id: "cognition", label: "Cognition", icon: Brain },
   { id: "brief", label: "Brief", icon: ListChecks },
   { id: "sources", label: "Sources", icon: Library },
@@ -101,6 +103,19 @@ function lifecycleTone(state: string): string {
       return "bg-accent-red/10 text-accent-red border-accent-red/20";
     default:
       return "bg-ink-700 text-fg-muted border-ink-600";
+  }
+}
+
+function debtStatusTone(status: string): string {
+  switch (status) {
+    case "resolved":
+      return "bg-accent-sage/10 text-accent-sage border-accent-sage/20";
+    case "running":
+      return "bg-accent-primary/10 text-accent-primary border-accent-primary/20";
+    case "dismissed":
+      return "bg-ink-700 text-fg-muted border-ink-600";
+    default:
+      return "bg-accent-amber/10 text-accent-amber border-accent-amber/20";
   }
 }
 
@@ -251,7 +266,11 @@ export function ProjectWorkflow({
   const [claimQuery, setClaimQuery] = useState("");
   const [claimStateFilter, setClaimStateFilter] = useState("all");
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
+  const [debtQuery, setDebtQuery] = useState("");
+  const [debtStatusFilter, setDebtStatusFilter] = useState("active");
+  const [selectedDebtId, setSelectedDebtId] = useState<string | null>(null);
   const [followUpBusy, setFollowUpBusy] = useState<string | null>(null);
+  const [debtStatusBusy, setDebtStatusBusy] = useState<string | null>(null);
   const router = useRouter();
   const { plan, facts, analysisReport, report, sources, verification } = project;
   const questions = (plan.questions ?? []) as any[];
@@ -415,7 +434,8 @@ export function ProjectWorkflow({
     ? graphClaimLifecycle
     : derivedClaimLifecycle;
   const derivedResearchDebt = answers.flatMap((answer: any) => [
-    ...(answer.gaps ?? []).map((gap: string) => ({
+    ...(answer.gaps ?? []).map((gap: string, i: number) => ({
+      id: `D-${answer.question_id}-gap-${i + 1}`,
       questionId: String(answer.question_id ?? ""),
       kind: "Unknown",
       severity:
@@ -423,16 +443,22 @@ export function ProjectWorkflow({
           ? "high"
           : "medium",
       text: gap,
+      nextCheck: answer.follow_ups?.[0] ?? null,
+      dependsOnClaims: (answer.key_facts ?? []) as string[],
     })),
-    ...(answer.follow_ups ?? []).map((followUp: string) => ({
+    ...(answer.follow_ups ?? []).map((followUp: string, i: number) => ({
+      id: `D-${answer.question_id}-next-${i + 1}`,
       questionId: String(answer.question_id ?? ""),
       kind: "Next check",
       severity: answer.coverage === "complete" ? "low" : "medium",
       text: followUp,
+      nextCheck: followUp,
+      dependsOnClaims: (answer.key_facts ?? []) as string[],
     })),
   ]);
   const graphResearchDebt = ((project.epistemicGraph?.research_debt ?? []) as any[]).map(
     (debt: any) => ({
+      id: String(debt.id ?? ""),
       questionId: String(debt.question_id ?? ""),
       kind:
         debt.kind === "next_check"
@@ -442,11 +468,26 @@ export function ProjectWorkflow({
             : "Unknown",
       severity: String(debt.severity ?? "medium"),
       text: String(debt.item ?? ""),
+      nextCheck: debt.next_check ? String(debt.next_check) : null,
+      dependsOnClaims: (debt.depends_on_claims ?? []) as string[],
     })
   );
-  const researchDebt = graphResearchDebt.length
+  const researchDebt = (graphResearchDebt.length
     ? graphResearchDebt
-    : derivedResearchDebt;
+    : derivedResearchDebt
+  ).map((debt: any) => {
+    const statusRecord = project.debtStatus?.[debt.id] ?? null;
+    return {
+      ...debt,
+      status: String(statusRecord?.status ?? "open"),
+      branchSlug: statusRecord?.branch_slug ? String(statusRecord.branch_slug) : null,
+      statusUpdatedAt:
+        typeof statusRecord?.updated_at === "number"
+          ? Number(statusRecord.updated_at)
+          : null,
+      statusNote: statusRecord?.note ? String(statusRecord.note) : null,
+    };
+  });
   const derivedContradictionMap = [
     ...answers.flatMap((answer: any) =>
       (answer.conflicting_facts ?? []).map((conflict: any) => ({
@@ -631,15 +672,52 @@ export function ProjectWorkflow({
     visibleClaims[0] ??
     claimDetails[0] ??
     null;
+  const visibleDebt = researchDebt.filter((debt: any) => {
+    const q = debtQuery.trim().toLowerCase();
+    const matchesQuery =
+      !q ||
+      debt.id.toLowerCase().includes(q) ||
+      debt.text.toLowerCase().includes(q) ||
+      debt.questionId.toLowerCase().includes(q) ||
+      debt.kind.toLowerCase().includes(q) ||
+      debt.dependsOnClaims.some((id: string) => id.toLowerCase().includes(q));
+    const matchesStatus =
+      debtStatusFilter === "all" ||
+      (debtStatusFilter === "active"
+        ? debt.status === "open" || debt.status === "running"
+        : debt.status === debtStatusFilter);
+    return matchesQuery && matchesStatus;
+  });
+  const selectedDebt =
+    visibleDebt.find((debt: any) => debt.id === selectedDebtId) ??
+    visibleDebt[0] ??
+    researchDebt[0] ??
+    null;
 
-  async function runFollowUp(angle: string, name = "resolve-contradiction") {
+  async function runFollowUp(
+    angle: string,
+    name = "resolve-contradiction",
+    meta: {
+      sourceDebtId?: string;
+      sourceClaimIds?: string[];
+      resolutionAxis?: string | null;
+      busyKey?: string;
+    } = {}
+  ) {
     if (!angle.trim()) return;
-    setFollowUpBusy(angle);
+    const busyKey = meta.busyKey ?? angle;
+    setFollowUpBusy(busyKey);
     try {
       const r = await fetch(`/api/projects/${slug}/extend`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ angle, name }),
+        body: JSON.stringify({
+          angle,
+          name,
+          source_debt_id: meta.sourceDebtId,
+          source_claim_ids: meta.sourceClaimIds ?? [],
+          resolution_axis: meta.resolutionAxis,
+        }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {
@@ -651,6 +729,28 @@ export function ProjectWorkflow({
     } catch (err: any) {
       alert(`Follow-up failed: ${err?.message ?? err}`);
       setFollowUpBusy(null);
+    }
+  }
+
+  async function setDebtStatus(debtId: string, status: string) {
+    setDebtStatusBusy(`${debtId}:${status}`);
+    try {
+      const r = await fetch(`/api/projects/${slug}/debt/${encodeURIComponent(debtId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        alert(`Debt update failed: ${data.error ?? r.status}`);
+        setDebtStatusBusy(null);
+        return;
+      }
+      router.refresh();
+    } catch (err: any) {
+      alert(`Debt update failed: ${err?.message ?? err}`);
+    } finally {
+      setDebtStatusBusy(null);
     }
   }
 
@@ -1161,6 +1261,248 @@ export function ProjectWorkflow({
                   ) : (
                     <div className="rounded-md bg-ink-900 p-4 text-[13px] text-fg-muted">
                       No claims available.
+                    </div>
+                  )}
+                </aside>
+              </section>
+            )}
+
+            {activeTab === "debt" && (
+              <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(360px,0.68fr)]">
+                <div className="min-w-0 rounded-lg border border-fg/[0.06] bg-ink-800 p-4 card-warm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="micro text-fg-muted">Research debt</div>
+                      <div className="mt-1 text-[12px] text-fg-muted">
+                        {visibleDebt.length}/{researchDebt.length} visible
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-fg/[0.06] bg-ink-900 px-2 py-1 text-[10.5px] text-fg-muted">
+                      {researchDebt.filter((d: any) => d.status === "open").length} open
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 lg:grid-cols-[minmax(0,1fr)_150px]">
+                    <label className="relative block min-w-0">
+                      <Search
+                        size={14}
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
+                      />
+                      <input
+                        value={debtQuery}
+                        onChange={(e) => setDebtQuery(e.target.value)}
+                        placeholder="Search debt, claims, questions..."
+                        className="h-9 w-full rounded-md border border-fg/[0.06] bg-ink-900 pl-8 pr-3 text-[12px] text-fg-dim outline-none transition placeholder:text-fg-muted focus:border-accent-primary/40"
+                      />
+                    </label>
+                    <select
+                      value={debtStatusFilter}
+                      onChange={(e) => setDebtStatusFilter(e.target.value)}
+                      className="h-9 rounded-md border border-fg/[0.06] bg-ink-900 px-3 text-[12px] text-fg-dim outline-none"
+                    >
+                      <option value="active">Active</option>
+                      <option value="all">All status</option>
+                      <option value="open">Open</option>
+                      <option value="running">Running</option>
+                      <option value="resolved">Resolved</option>
+                      <option value="dismissed">Dismissed</option>
+                    </select>
+                  </div>
+
+                  <div className="mt-4 divide-y divide-fg/[0.06] overflow-hidden rounded-md border border-fg/[0.06]">
+                    {visibleDebt.slice(0, 80).map((debt: any) => {
+                      const selected = selectedDebt?.id === debt.id;
+                      return (
+                        <button
+                          key={debt.id}
+                          type="button"
+                          onClick={() => setSelectedDebtId(debt.id)}
+                          className={`block w-full min-w-0 bg-ink-900 p-3 text-left transition hover:bg-ink-700 ${
+                            selected ? "bg-accent-primary/[0.08]" : ""
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-mono text-[10.5px] text-accent-primary">
+                              {debt.id}
+                            </span>
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10.5px] ${debtStatusTone(
+                                debt.status
+                              )}`}
+                            >
+                              {debt.status}
+                            </span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10.5px] ${
+                                debt.severity === "high"
+                                  ? "bg-accent-red/10 text-accent-red"
+                                  : debt.severity === "medium"
+                                    ? "bg-accent-amber/10 text-accent-amber"
+                                    : "bg-accent-sage/10 text-accent-sage"
+                              }`}
+                            >
+                              {debt.severity}
+                            </span>
+                            <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                              {debt.kind}
+                            </span>
+                          </div>
+                          <div className="mt-2 line-clamp-2 text-[12.5px] leading-relaxed text-fg-dim">
+                            {debt.text}
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5 text-[10.5px] text-fg-muted">
+                            <span className="rounded-full bg-ink-700 px-2 py-0.5">
+                              {debt.questionId}
+                            </span>
+                            <span className="rounded-full bg-ink-700 px-2 py-0.5">
+                              {debt.dependsOnClaims.length} claims
+                            </span>
+                            {debt.branchSlug && (
+                              <span className="rounded-full bg-accent-primary/10 px-2 py-0.5 text-accent-primary">
+                                branch
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {visibleDebt.length === 0 && (
+                      <div className="bg-ink-900 p-4 text-[13px] text-fg-muted">
+                        No debt items match the current filters.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <aside className="min-w-0 rounded-lg border border-fg/[0.06] bg-ink-800 p-4 card-warm xl:sticky xl:top-6 xl:self-start">
+                  {selectedDebt ? (
+                    <div className="min-w-0 space-y-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-mono text-[11px] text-accent-primary">
+                            {selectedDebt.id}
+                          </span>
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-[10.5px] ${debtStatusTone(
+                              selectedDebt.status
+                            )}`}
+                          >
+                            {selectedDebt.status}
+                          </span>
+                          <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                            {selectedDebt.kind}
+                          </span>
+                        </div>
+                        <div className="mt-3 text-[15px] leading-relaxed text-fg">
+                          {selectedDebt.text}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-md bg-ink-900 p-3">
+                          <div className="micro text-fg-muted">Severity</div>
+                          <div className="mt-2 text-[13px] text-fg-dim">
+                            {selectedDebt.severity}
+                          </div>
+                        </div>
+                        <div className="rounded-md bg-ink-900 p-3">
+                          <div className="micro text-fg-muted">Question</div>
+                          <div className="mt-2 font-mono text-[13px] text-fg-dim">
+                            {selectedDebt.questionId}
+                          </div>
+                        </div>
+                      </div>
+
+                      {selectedDebt.nextCheck && (
+                        <div className="rounded-md border border-fg/[0.06] bg-ink-900 p-3">
+                          <div className="micro text-fg-muted">Next check</div>
+                          <div className="mt-2 text-[12.5px] leading-relaxed text-fg-dim">
+                            {selectedDebt.nextCheck}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <div className="micro text-fg-muted">Blocked claims</div>
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {selectedDebt.dependsOnClaims.slice(0, 18).map((factId: string) => (
+                            <button
+                              key={factId}
+                              type="button"
+                              onClick={() => {
+                                setSelectedClaimId(factId);
+                                setActiveTab("claims");
+                              }}
+                              className="rounded-full bg-ink-700 px-2 py-0.5 font-mono text-[10.5px] text-fg-muted transition hover:bg-accent-primary/10 hover:text-accent-primary"
+                            >
+                              {factId}
+                            </button>
+                          ))}
+                          {selectedDebt.dependsOnClaims.length === 0 && (
+                            <span className="text-[12px] text-fg-muted">
+                              No direct claim dependencies recorded.
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {selectedDebt.branchSlug && (
+                        <Link
+                          href={`/projects/${selectedDebt.branchSlug}`}
+                          className="block rounded-md border border-accent-primary/20 bg-accent-primary/[0.05] p-3 text-[12px] text-accent-primary transition hover:bg-accent-primary/10"
+                        >
+                          Follow-up branch: {selectedDebt.branchSlug}
+                        </Link>
+                      )}
+
+                      <div className="space-y-2">
+                        <button
+                          type="button"
+                          disabled={followUpBusy === selectedDebt.id}
+                          onClick={() =>
+                            runFollowUp(
+                              selectedDebt.nextCheck ??
+                                `Resolve this research debt: ${selectedDebt.text}`,
+                              "resolve-debt",
+                              {
+                                sourceDebtId: selectedDebt.id,
+                                sourceClaimIds: selectedDebt.dependsOnClaims,
+                                resolutionAxis: selectedDebt.kind,
+                                busyKey: selectedDebt.id,
+                              }
+                            )
+                          }
+                          className="inline-flex h-9 w-full items-center justify-center rounded-md bg-accent-primary px-3 text-[12px] font-semibold text-ink-900 transition hover:brightness-110 disabled:opacity-50"
+                        >
+                          {followUpBusy === selectedDebt.id
+                            ? "Starting follow-up..."
+                            : "Run follow-up"}
+                        </button>
+                        {canEdit && (
+                          <div className="grid grid-cols-2 gap-2">
+                            {["open", "running", "resolved", "dismissed"].map((status) => (
+                              <button
+                                key={status}
+                                type="button"
+                                disabled={
+                                  debtStatusBusy === `${selectedDebt.id}:${status}` ||
+                                  selectedDebt.status === status
+                                }
+                                onClick={() => setDebtStatus(selectedDebt.id, status)}
+                                className={`h-8 rounded-md border px-2 text-[11.5px] transition disabled:opacity-50 ${debtStatusTone(
+                                  status
+                                )}`}
+                              >
+                                {status}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-md bg-ink-900 p-4 text-[13px] text-fg-muted">
+                      No research debt available.
                     </div>
                   )}
                 </aside>

@@ -593,6 +593,42 @@ export function buildOpenApiSpec(origin = "https://example.local") {
           },
         },
       },
+      "/api/projects/{slug}/debt/{debtId}": {
+        patch: {
+          tags: ["projects"],
+          summary: "Update research debt status",
+          description:
+            "Owner-or-admin only. Stores a sidecar status for an epistemic_graph research debt item without mutating the graph artifact.",
+          parameters: [
+            { name: "slug", in: "path", required: true, schema: { type: "string" } },
+            { name: "debtId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["status"],
+                  properties: {
+                    status: {
+                      type: "string",
+                      enum: ["open", "running", "resolved", "dismissed"],
+                    },
+                    note: { type: ["string", "null"] },
+                    branch_slug: { type: ["string", "null"] },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "Debt status updated" },
+            "400": { description: "Invalid status" },
+            "403": { description: "Only owner or admin can update" },
+          },
+        },
+      },
       "/api/runs": {
         get: {
           summary: "List in-memory pipeline runs",

@@ -27,6 +27,7 @@ import { getProject, canView, setOwner } from "@/lib/projects";
 import { cookies } from "next/headers";
 import { verifySession, COOKIE_NAME } from "@/lib/sessions";
 import { startRun } from "@/lib/runner";
+import { setDebtStatus } from "@/lib/debt";
 import {
   mkdirSync,
   existsSync,
@@ -73,6 +74,13 @@ export async function POST(
   const body = await request.json().catch(() => ({}));
   const angle = String(body.angle ?? "").trim();
   const name = String(body.name ?? "").trim();
+  const sourceDebtId =
+    body.source_debt_id == null ? null : String(body.source_debt_id).trim();
+  const sourceClaimIds = Array.isArray(body.source_claim_ids)
+    ? body.source_claim_ids.map((x: any) => String(x)).filter(Boolean).slice(0, 20)
+    : [];
+  const resolutionAxis =
+    body.resolution_axis == null ? null : String(body.resolution_axis).trim();
   if (angle.length < 8) {
     return Response.json(
       {
@@ -127,12 +135,27 @@ export async function POST(
           forked_by: uid,
           suffix: name || null,
           kind: "extend",
+          source_debt_id: sourceDebtId || null,
+          source_claim_ids: sourceClaimIds,
+          resolution_axis: resolutionAxis || null,
         },
         null,
         2
       )
     );
     setOwner(newSlug, uid);
+    if (sourceDebtId) {
+      setDebtStatus(
+        sourceSlug,
+        sourceDebtId,
+        {
+          status: "running",
+          branch_slug: newSlug,
+          note: "Follow-up branch started for this research debt item.",
+        },
+        uid
+      );
+    }
   } catch (err: any) {
     return Response.json(
       { error: `Extend copy failed: ${err?.message ?? String(err)}` },

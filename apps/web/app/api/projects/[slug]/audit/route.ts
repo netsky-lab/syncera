@@ -158,13 +158,21 @@ export async function GET(
   const epistemicEngine = project.epistemicGraph
     ? {
         claim_lifecycle: project.epistemicGraph.claims ?? [],
-        research_debt: project.epistemicGraph.research_debt ?? [],
+        research_debt: (project.epistemicGraph.research_debt ?? []).map((d: any) => ({
+          ...d,
+          status: project.debtStatus?.[d.id]?.status ?? "open",
+          status_record: project.debtStatus?.[d.id] ?? null,
+        })),
         contradiction_resolver: project.epistemicGraph.contradictions ?? [],
         summary: project.epistemicGraph.summary ?? null,
       }
     : {
         claim_lifecycle: claimLifecycle,
-        research_debt: researchDebt,
+        research_debt: researchDebt.map((d: any) => ({
+          ...d,
+          status: project.debtStatus?.[d.id]?.status ?? "open",
+          status_record: project.debtStatus?.[d.id] ?? null,
+        })),
         contradiction_resolver: contradictionResolver,
         summary: null,
       };

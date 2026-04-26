@@ -264,6 +264,27 @@ describe("getProject", () => {
     expect(p).not.toBeNull();
     expect(p!.units).toEqual([]);
   });
+
+  test("loads debt status sidecar for project detail", () => {
+    makeProject(
+      "debtful",
+      {
+        "plan.json": { topic: "t", questions: [] },
+        "debt_status.json": {
+          D1: {
+            status: "resolved",
+            updated_at: 123,
+            updated_by: USER_UID,
+            branch_slug: "branch-a",
+          },
+        },
+      },
+      USER_UID
+    );
+    const p = P.getProject("debtful", USER_UID);
+    expect(p?.debtStatus.D1.status).toBe("resolved");
+    expect(p?.debtStatus.D1.branch_slug).toBe("branch-a");
+  });
 });
 
 describe("canView", () => {
