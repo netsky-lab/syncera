@@ -339,7 +339,12 @@ export function startRun(
   topic: string,
   constraints?: string,
   ownerUid: string | null = null,
-  opts?: { forceSlug?: string; extraArgs?: string[]; userSources?: string[] }
+  opts?: {
+    forceSlug?: string;
+    extraArgs?: string[];
+    userSources?: string[];
+    env?: Record<string, string>;
+  }
 ): { runId: string; slug: string } {
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   // If the caller pins a slug (Extend flow pre-copies source artifacts
@@ -468,6 +473,12 @@ export function startRun(
     ...(opts?.forceSlug ? ["-e", `FORCE_SLUG=${opts.forceSlug}`] : []),
     ...(opts?.userSources && opts.userSources.length > 0
       ? ["-e", `USER_SOURCES_FILE=/app/projects/${slug}/user_sources.json`]
+      : []),
+    ...(opts?.env
+      ? Object.entries(opts.env).flatMap(([key, value]) => [
+          "-e",
+          `${key}=${value}`,
+        ])
       : []),
     "--name",
     `rl-run-${runId}`,

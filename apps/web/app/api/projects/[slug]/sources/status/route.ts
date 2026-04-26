@@ -11,6 +11,12 @@ const VALID = new Set<Exclude<SourceTrustStatus, "unreviewed">>([
   "questionable",
   "ignored",
 ]);
+const VALID_RECHECK = new Set([
+  "none",
+  "running",
+  "replacement_found",
+  "resolved",
+]);
 
 export async function PATCH(
   request: Request,
@@ -54,6 +60,20 @@ export async function PATCH(
     {
       status,
       note: body.note == null ? null : String(body.note),
+      recheck_status:
+        body.recheck_status == null ||
+        !VALID_RECHECK.has(String(body.recheck_status))
+          ? undefined
+          : (String(body.recheck_status) as any),
+      branch_slug:
+        body.branch_slug === undefined
+          ? undefined
+          : body.branch_slug == null
+            ? null
+            : String(body.branch_slug),
+      source_claim_ids: Array.isArray(body.source_claim_ids)
+        ? body.source_claim_ids.map((x: any) => String(x)).filter(Boolean)
+        : undefined,
     },
     viewerUid
   );

@@ -28,6 +28,7 @@ import { cookies } from "next/headers";
 import { verifySession, COOKIE_NAME } from "@/lib/sessions";
 import { startRun } from "@/lib/runner";
 import { setDebtStatus } from "@/lib/debt";
+import { readSourceStatus, setSourceStatus } from "@/lib/source-status";
 import {
   mkdirSync,
   existsSync,
@@ -156,6 +157,21 @@ export async function POST(
           status: "running",
           branch_slug: newSlug,
           note: "Follow-up branch started for this research debt item.",
+        },
+        uid
+      );
+    }
+    if (sourceUrl) {
+      const current = readSourceStatus(sourceSlug)[sourceUrl];
+      setSourceStatus(
+        sourceSlug,
+        sourceUrl,
+        {
+          status: current?.status ?? "questionable",
+          note: current?.note ?? "Source recheck branch started.",
+          recheck_status: "running",
+          branch_slug: newSlug,
+          source_claim_ids: sourceClaimIds,
         },
         uid
       );

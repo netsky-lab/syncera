@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ComponentType } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -313,6 +313,7 @@ export function ProjectWorkflow({
   const [evidenceQuery, setEvidenceQuery] = useState("");
   const [evidenceStatusFilter, setEvidenceStatusFilter] = useState("all");
   const [selectedEvidenceUrl, setSelectedEvidenceUrl] = useState<string | null>(null);
+  const [evidenceDiff, setEvidenceDiff] = useState<any | null>(null);
   const [followUpBusy, setFollowUpBusy] = useState<string | null>(null);
   const [debtStatusBusy, setDebtStatusBusy] = useState<string | null>(null);
   const [sourceStatusBusy, setSourceStatusBusy] = useState<string | null>(null);
@@ -865,6 +866,74 @@ export function ProjectWorkflow({
     visibleEvidence[0] ??
     evidenceRows[0] ??
     null;
+  const sourceQualityPct = sourceRows.length
+    ? Math.round(
+        (sourceRows.reduce((sum, source) => {
+          const type = `${source.type ?? ""} ${source.provider ?? ""}`.toLowerCase();
+          const base =
+            type.includes("primary") ||
+            type.includes("official") ||
+            type.includes("paper") ||
+            type.includes("arxiv") ||
+            type.includes("semantic")
+              ? 1
+              : type.includes("blog") || type.includes("community")
+                ? 0.35
+                : 0.6;
+          return sum + base;
+        }, 0) /
+          sourceRows.length) *
+          100
+      )
+    : 0;
+  const debtScorePct = researchDebt.length
+    ? Math.max(
+        0,
+        Math.round(
+          100 -
+            Math.min(100, researchDebt.filter((d: any) => d.status !== "resolved").length * 8)
+        )
+      )
+    : 100;
+  const contradictionScorePct = contradictionMap.length
+    ? Math.max(
+        0,
+        Math.round(
+          100 -
+            contradictionMap.filter((item) => item.verdict === "contradiction").length * 15
+        )
+      )
+    : 100;
+  const cognitiveScore = Math.round(
+    coveragePct * 0.25 +
+      verifiedPct * 0.25 +
+      sourceQualityPct * 0.2 +
+      contradictionScorePct * 0.15 +
+      debtScorePct * 0.15
+  );
+
+  useEffect(() => {
+    if (!selectedEvidence?.statusRecord?.branch_slug) {
+      setEvidenceDiff(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(
+      `/api/projects/${slug}/sources/diff?url=${encodeURIComponent(
+        selectedEvidence.url
+      )}`
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled) setEvidenceDiff(data);
+      })
+      .catch(() => {
+        if (!cancelled) setEvidenceDiff(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEvidence?.url, selectedEvidence?.statusRecord?.branch_slug, slug]);
 
   async function runFollowUp(
     angle: string,
@@ -953,6 +1022,38 @@ export function ProjectWorkflow({
     }
   }
 
+  async function setSourceRecheckStatus(
+    url: string,
+    status: "replacement_found" | "resolved"
+  ) {
+    const current = project.sourceStatus?.[url] ?? {};
+    setSourceStatusBusy(`${url}:${status}`);
+    try {
+      const r = await fetch(`/api/projects/${slug}/sources/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url,
+          status: current.status ?? selectedEvidence?.status ?? "questionable",
+          recheck_status: status,
+          branch_slug: current.branch_slug ?? null,
+          source_claim_ids: current.source_claim_ids ?? [],
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        alert(`Source recheck update failed: ${data.error ?? r.status}`);
+        setSourceStatusBusy(null);
+        return;
+      }
+      router.refresh();
+    } catch (err: any) {
+      alert(`Source recheck update failed: ${err?.message ?? err}`);
+    } finally {
+      setSourceStatusBusy(null);
+    }
+  }
+
   return (
     <div className="min-h-screen overflow-x-hidden">
       <header className="hidden h-12 min-w-0 items-center gap-3 border-b border-fg/[0.06] px-8 text-[12px] text-fg-muted md:flex">
@@ -1001,7 +1102,12 @@ export function ProjectWorkflow({
                 <TopicHeader topic={plan.topic} />
               </div>
 
-              <div className="mt-5 grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              <div className="mt-5 grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                <StatCard
+                  label="Cognitive"
+                  value={`${cognitiveScore}%`}
+                  meta={`${sourceQualityPct}% source quality`}
+                />
                 <StatCard
                   label="Coverage"
                   value={`${coveragePct}%`}
@@ -1634,6 +1740,91 @@ export function ProjectWorkflow({
                         ))}
                       </div>
 
+                      {selectedEvidence.statusRecord?.recheck_status && (
+                        <div className="rounded-md border border-fg/[0.06] bg-ink-900 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <div className="micro text-fg-muted">Source recheck</div>
+                              <div className="mt-1 text-[12px] text-fg-dim">
+                                {String(
+                                  selectedEvidence.statusRecord.recheck_status
+                                ).replace(/_/g, " ")}
+                              </div>
+                            </div>
+                            {selectedEvidence.statusRecord.branch_slug && (
+                              <Link
+                                href={`/projects/${selectedEvidence.statusRecord.branch_slug}`}
+                                className="rounded-md border border-accent-primary/20 bg-accent-primary/[0.06] px-2 py-1 text-[11px] text-accent-primary transition hover:bg-accent-primary/10"
+                              >
+                                branch
+                              </Link>
+                            )}
+                          </div>
+                          {evidenceDiff?.changes?.length > 0 && (
+                            <div className="mt-3 space-y-2">
+                              {evidenceDiff.changes.slice(0, 4).map((change: any) => (
+                                <div
+                                  key={change.claim_id}
+                                  className="rounded border border-fg/[0.06] bg-ink-800 p-2"
+                                >
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="font-mono text-[10.5px] text-accent-primary">
+                                      {change.claim_id}
+                                    </span>
+                                    <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10px] text-fg-muted">
+                                      {change.old?.state ?? "old"} →{" "}
+                                      {change.new?.state ?? "missing"}
+                                    </span>
+                                    {change.delta_confidence != null && (
+                                      <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10px] text-fg-muted">
+                                        conf{" "}
+                                        {change.delta_confidence > 0 ? "+" : ""}
+                                        {Math.round(change.delta_confidence * 100)}%
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="mt-1 line-clamp-2 text-[11.5px] text-fg-muted">
+                                    {change.new?.statement ?? "No comparable claim in branch yet."}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {canEdit && selectedEvidence.statusRecord.branch_slug && (
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                disabled={
+                                  sourceStatusBusy ===
+                                  `${selectedEvidence.url}:replacement_found`
+                                }
+                                onClick={() =>
+                                  setSourceRecheckStatus(
+                                    selectedEvidence.url,
+                                    "replacement_found"
+                                  )
+                                }
+                                className="h-8 rounded-md border border-accent-primary/20 bg-accent-primary/[0.06] px-2 text-[11px] text-accent-primary transition hover:bg-accent-primary/10 disabled:opacity-50"
+                              >
+                                replacement found
+                              </button>
+                              <button
+                                type="button"
+                                disabled={
+                                  sourceStatusBusy === `${selectedEvidence.url}:resolved`
+                                }
+                                onClick={() =>
+                                  setSourceRecheckStatus(selectedEvidence.url, "resolved")
+                                }
+                                className="h-8 rounded-md border border-accent-sage/20 bg-accent-sage/[0.06] px-2 text-[11px] text-accent-sage transition hover:bg-accent-sage/10 disabled:opacity-50"
+                              >
+                                resolved
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {(selectedEvidence.status === "questionable" ||
                         selectedEvidence.status === "ignored") && (
                         <div className="rounded-md border border-accent-amber/20 bg-accent-amber/[0.05] p-3">
@@ -2045,6 +2236,18 @@ export function ProjectWorkflow({
                     <div className="mt-4 space-y-3">
                       <div>
                         <div className="flex justify-between text-[12px] text-fg-muted">
+                          <span>Cognitive score</span>
+                          <span className="tnum">{cognitiveScore}%</span>
+                        </div>
+                        <div className="mt-1 h-2 overflow-hidden rounded-full bg-ink-900">
+                          <div
+                            className="h-full rounded-full bg-accent-primary"
+                            style={{ width: `${cognitiveScore}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[12px] text-fg-muted">
                           <span>Coverage</span>
                           <span className="tnum">{coveragePct}%</span>
                         </div>
@@ -2075,6 +2278,17 @@ export function ProjectWorkflow({
                             : "0.0"}
                         </span>{" "}
                         verified facts per question
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 text-center text-[10.5px] text-fg-muted">
+                        <div className="rounded bg-ink-900 px-2 py-1.5">
+                          source {sourceQualityPct}%
+                        </div>
+                        <div className="rounded bg-ink-900 px-2 py-1.5">
+                          debt {debtScorePct}%
+                        </div>
+                        <div className="rounded bg-ink-900 px-2 py-1.5">
+                          tension {contradictionScorePct}%
+                        </div>
                       </div>
                     </div>
                   </div>

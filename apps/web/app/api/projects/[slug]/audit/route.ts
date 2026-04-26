@@ -187,6 +187,54 @@ export async function GET(
 
   const totalFacts = verification?.summary?.total ?? facts.length;
   const verifiedFacts = verification?.summary?.verified ?? facts.length;
+  const coverageAnswers = questionAudit.length;
+  const coverageScore =
+    coverageAnswers > 0
+      ? Math.round(
+          (questionAudit.reduce((sum: number, q: any) => {
+            if (q.coverage === "complete") return sum + 1;
+            if (q.coverage === "partial") return sum + 0.65;
+            if (q.coverage === "gaps_critical") return sum + 0.3;
+            return sum;
+          }, 0) /
+            coverageAnswers) *
+            100
+        )
+      : 0;
+  const verificationScore =
+    totalFacts > 0 ? Math.round((verifiedFacts / totalFacts) * 100) : 0;
+  const sourceQualityScore = sourceRows.length
+    ? Math.round(
+        (sourceRows.reduce((sum: number, source: any) => {
+          const type = `${source.relevance?.source_type ?? ""} ${source.provider ?? ""}`.toLowerCase();
+          return (
+            sum +
+            (type.match(/primary|official|paper|arxiv|openalex|semantic/)
+              ? 1
+              : type.match(/blog|community|forum|social/)
+                ? 0.35
+                : 0.6)
+          );
+        }, 0) /
+          sourceRows.length) *
+          100
+      )
+    : 0;
+  const debtPenalty = Math.min(
+    100,
+    (epistemicEngine.research_debt ?? []).filter((d: any) => d.status !== "resolved").length * 8
+  );
+  const tensionPenalty = Math.min(
+    100,
+    (epistemicEngine.contradiction_resolver ?? []).length * 15
+  );
+  const cognitiveScore = Math.round(
+    coverageScore * 0.25 +
+      verificationScore * 0.25 +
+      sourceQualityScore * 0.2 +
+      (100 - tensionPenalty) * 0.15 +
+      (100 - debtPenalty) * 0.15
+  );
   const audit = {
     slug,
     generated_at: new Date().toISOString(),
@@ -210,6 +258,14 @@ export async function GET(
       facts_rejected: Math.max(0, totalFacts - verifiedFacts),
       verification_rate:
         totalFacts > 0 ? Number((verifiedFacts / totalFacts).toFixed(4)) : null,
+      cognitive_score: cognitiveScore,
+      cognitive_score_components: {
+        coverage: coverageScore,
+        verification: verificationScore,
+        source_quality: sourceQualityScore,
+        contradiction_resolution: 100 - tensionPenalty,
+        research_debt: 100 - debtPenalty,
+      },
       weak_questions: questionAudit.filter(
         (q: any) => q.coverage === "insufficient" || q.coverage === "gaps_critical"
       ).length,

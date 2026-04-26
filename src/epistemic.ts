@@ -354,6 +354,80 @@ export function buildEpistemicGraph(args: {
       depends_on_claims: claimsByQuestion.get(sq.question_id ?? "") ?? [],
     });
   }
+  const sourceRows = [...sourceMeta.values()];
+  for (const question of plan.questions ?? []) {
+    const qClaims = claims.filter((claim) => claim.question_id === question.id);
+    const verifiedClaims = qClaims.filter(
+      (claim) => claim.lifecycle_state === "verified"
+    );
+    const blockedClaims = qClaims.filter(
+      (claim) => claim.lifecycle_state === "blocked"
+    );
+    const qSources = sourceRows.filter((source) => source.question_id === question.id);
+    const primaryLike = qSources.filter((source) =>
+      `${source.source_type ?? ""} ${source.provider ?? ""}`
+        .toLowerCase()
+        .match(/primary|official|paper|arxiv|openalex|semantic/)
+    );
+    const weakSourceTypes = qSources.filter((source) =>
+      `${source.source_type ?? ""}`.toLowerCase().match(/blog|community|forum|social/)
+    );
+    if (qSources.length > 0 && qSources.length < 8) {
+      researchDebt.push({
+        id: `D${researchDebt.length + 1}`,
+        question_id: question.id,
+        kind: "weak_evidence",
+        severity: "medium",
+        item: `Low source density for ${question.id}: only ${qSources.length} accepted sources.`,
+        next_check: `Harvest more primary and official sources for ${question.id}.`,
+        depends_on_claims: qClaims.map((claim) => claim.id),
+      });
+    }
+    if (qClaims.length > 0 && verifiedClaims.length < Math.max(2, qClaims.length * 0.35)) {
+      researchDebt.push({
+        id: `D${researchDebt.length + 1}`,
+        question_id: question.id,
+        kind: "weak_evidence",
+        severity: "high",
+        item: `Low verified fact density for ${question.id}: ${verifiedClaims.length}/${qClaims.length} claims verified.`,
+        next_check: `Re-run verification and find stronger citations for blocked claims in ${question.id}.`,
+        depends_on_claims: qClaims.map((claim) => claim.id),
+      });
+    }
+    if (blockedClaims.length >= 3) {
+      researchDebt.push({
+        id: `D${researchDebt.length + 1}`,
+        question_id: question.id,
+        kind: "weak_evidence",
+        severity: "high",
+        item: `High rejected-fact pressure for ${question.id}: ${blockedClaims.length} claims are blocked by verifier.`,
+        next_check: `Inspect rejected claims and replace weak URLs for ${question.id}.`,
+        depends_on_claims: blockedClaims.map((claim) => claim.id),
+      });
+    }
+    if (qSources.length >= 4 && primaryLike.length === 0) {
+      researchDebt.push({
+        id: `D${researchDebt.length + 1}`,
+        question_id: question.id,
+        kind: "weak_evidence",
+        severity: "medium",
+        item: `No primary-like sources detected for ${question.id}.`,
+        next_check: `Search specifically for papers, docs, standards, or official reports for ${question.id}.`,
+        depends_on_claims: qClaims.map((claim) => claim.id),
+      });
+    }
+    if (qSources.length >= 6 && weakSourceTypes.length / qSources.length > 0.5) {
+      researchDebt.push({
+        id: `D${researchDebt.length + 1}`,
+        question_id: question.id,
+        kind: "weak_evidence",
+        severity: "medium",
+        item: `Weak source mix for ${question.id}: more than half of accepted sources are blog/community tier.`,
+        next_check: `Replace blog/community evidence with primary or official sources for ${question.id}.`,
+        depends_on_claims: qClaims.map((claim) => claim.id),
+      });
+    }
+  }
   const questionableSources = Object.entries(sourceStatus).filter(
     ([, record]) => record.status === "questionable"
   );

@@ -16,6 +16,9 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const topic = String(body.topic ?? "").trim();
   const constraints = body.constraints ? String(body.constraints).trim() : undefined;
+  const settings = body.deep_settings && typeof body.deep_settings === "object"
+    ? body.deep_settings
+    : {};
   const rerun = body.rerun === true;
   // Optional user-curated source URLs. When present the pipeline skips
   // scout+harvest and uses only these URLs for evidence extraction.
@@ -32,8 +35,45 @@ export async function POST(request: Request) {
     );
   }
 
-  const { runId, slug } = startRun(topic, constraints, ownerUid, {
+  const depth = ["balanced", "deep", "max"].includes(String(settings.depth))
+    ? String(settings.depth)
+    : "deep";
+  const targetSources = Math.max(
+    50,
+    Math.min(500, Number(settings.target_sources ?? (depth === "max" ? 400 : depth === "deep" ? 250 : 120)))
+  );
+  const minQuestions = Math.max(5, Math.min(20, Number(settings.min_questions ?? 8)));
+  const parallelism = Math.max(4, Math.min(64, Number(settings.parallelism ?? 16)));
+  const provider = ["qwen", "gemini"].includes(String(settings.provider))
+    ? String(settings.provider)
+    : undefined;
+  const preferredTypes = Array.isArray(settings.preferred_source_types)
+    ? settings.preferred_source_types.map((x: any) => String(x)).filter(Boolean).slice(0, 8)
+    : [];
+  const settingsConstraint = [
+    `Deep research settings: depth=${depth}`,
+    `minimum research questions=${minQuestions}`,
+    `target sources=${targetSources}`,
+    `preferred source types=${preferredTypes.length ? preferredTypes.join(", ") : "primary papers, official docs, benchmarks"}`,
+  ].join("; ");
+  const mergedConstraints = [constraints, settingsConstraint].filter(Boolean).join("\n");
+
+  const envOverrides: Record<string, string> = {
+    MAX_HARVEST_SOURCES: String(targetSources),
+    HARVEST_BREADTH: depth === "max" ? "12" : depth === "deep" ? "8" : "5",
+    HARVEST_DEPTH: depth === "max" ? "8" : depth === "deep" ? "5" : "3",
+    HARVEST_PAGES_PER_QUERY: depth === "balanced" ? "2" : "3",
+    HARVEST_URLS_PER_QUERY: depth === "balanced" ? "8" : "12",
+    CONCURRENCY_HARVEST: String(parallelism),
+    CONCURRENCY_EVIDENCE: String(Math.min(parallelism, 32)),
+    CONCURRENCY_ANALYZER: String(Math.min(parallelism, 24)),
+    CONCURRENCY_VERIFIER: String(Math.min(parallelism, 32)),
+  };
+  if (provider) envOverrides.LLM_PROVIDER = provider;
+
+  const { runId, slug } = startRun(topic, mergedConstraints || undefined, ownerUid, {
     userSources: userSources.length > 0 ? userSources : undefined,
+    env: envOverrides,
     extraArgs: rerun
       ? [
           "--rescout",
@@ -50,6 +90,14 @@ export async function POST(request: Request) {
     runId,
     slug,
     topic,
+    deep_settings: {
+      depth,
+      target_sources: targetSources,
+      min_questions: minQuestions,
+      parallelism,
+      provider: provider ?? "default",
+      preferred_source_types: preferredTypes,
+    },
     mode: rerun ? "rerun" : userSources.length > 0 ? "user-curated" : "harvest",
   });
 }

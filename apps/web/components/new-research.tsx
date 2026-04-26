@@ -76,7 +76,16 @@ export function NewResearchForm() {
   const [expanded, setExpanded] = useState(false);
   const [chatMode, setChatMode] = useState(false);
   const [sourcesMode, setSourcesMode] = useState(false);
+  const [settingsMode, setSettingsMode] = useState(false);
   const [userSourcesText, setUserSourcesText] = useState("");
+  const [depth, setDepth] = useState<"balanced" | "deep" | "max">("deep");
+  const [targetSources, setTargetSources] = useState(250);
+  const [minQuestions, setMinQuestions] = useState(8);
+  const [parallelism, setParallelism] = useState(16);
+  const [provider, setProvider] = useState("qwen");
+  const [preferredSourceTypes, setPreferredSourceTypes] = useState(
+    "primary papers, official docs, benchmarks"
+  );
   const [runId, setRunId] = useState<string | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
   const [events, setEvents] = useState<LogEvent[]>([]);
@@ -167,6 +176,17 @@ export function NewResearchForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic,
+          deep_settings: {
+            depth,
+            target_sources: targetSources,
+            min_questions: minQuestions,
+            parallelism,
+            provider,
+            preferred_source_types: preferredSourceTypes
+              .split(",")
+              .map((x) => x.trim())
+              .filter(Boolean),
+          },
           ...(userSources.length > 0 ? { user_sources: userSources } : {}),
         }),
       });
@@ -290,6 +310,82 @@ export function NewResearchForm() {
                 </div>
               </div>
             )}
+            {settingsMode && (
+              <div className="grid gap-3 rounded-md border border-fg/[0.08] bg-ink-900 p-3 md:grid-cols-2">
+                <label className="space-y-1 text-[11px] text-fg-muted">
+                  <span>Depth</span>
+                  <select
+                    value={depth}
+                    onChange={(e) => setDepth(e.target.value as typeof depth)}
+                    disabled={status === "starting"}
+                    className="h-8 w-full rounded border border-ink-500 bg-ink-800 px-2 text-[12px] text-fg"
+                  >
+                    <option value="balanced">Balanced</option>
+                    <option value="deep">Deep</option>
+                    <option value="max">Max</option>
+                  </select>
+                </label>
+                <label className="space-y-1 text-[11px] text-fg-muted">
+                  <span>Provider</span>
+                  <select
+                    value={provider}
+                    onChange={(e) => setProvider(e.target.value)}
+                    disabled={status === "starting"}
+                    className="h-8 w-full rounded border border-ink-500 bg-ink-800 px-2 text-[12px] text-fg"
+                  >
+                    <option value="qwen">Qwen</option>
+                    <option value="gemini">Gemini</option>
+                  </select>
+                </label>
+                <label className="space-y-1 text-[11px] text-fg-muted">
+                  <span>Min questions: {minQuestions}</span>
+                  <input
+                    type="range"
+                    min={5}
+                    max={20}
+                    value={minQuestions}
+                    onChange={(e) => setMinQuestions(Number(e.target.value))}
+                    disabled={status === "starting"}
+                    className="w-full"
+                  />
+                </label>
+                <label className="space-y-1 text-[11px] text-fg-muted">
+                  <span>Target sources: {targetSources}</span>
+                  <input
+                    type="range"
+                    min={50}
+                    max={500}
+                    step={25}
+                    value={targetSources}
+                    onChange={(e) => setTargetSources(Number(e.target.value))}
+                    disabled={status === "starting"}
+                    className="w-full"
+                  />
+                </label>
+                <label className="space-y-1 text-[11px] text-fg-muted">
+                  <span>Parallelism: {parallelism}</span>
+                  <input
+                    type="range"
+                    min={4}
+                    max={64}
+                    step={4}
+                    value={parallelism}
+                    onChange={(e) => setParallelism(Number(e.target.value))}
+                    disabled={status === "starting"}
+                    className="w-full"
+                  />
+                </label>
+                <label className="space-y-1 text-[11px] text-fg-muted">
+                  <span>Preferred source types</span>
+                  <input
+                    value={preferredSourceTypes}
+                    onChange={(e) => setPreferredSourceTypes(e.target.value)}
+                    disabled={status === "starting"}
+                    className="h-8 w-full rounded border border-ink-500 bg-ink-800 px-2 text-[12px] text-fg"
+                  />
+                </label>
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
               <span className="text-muted-foreground">Try:</span>
               {EXAMPLE_TOPICS.map((ex) => (
@@ -310,6 +406,18 @@ export function NewResearchForm() {
                 <div>Qwen profile: 16 slots / 64k context · Gemini search can still supplement harvest.</div>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => setSettingsMode((s) => !s)}
+                  disabled={status === "starting"}
+                  className={`h-9 px-3 rounded-md border text-[12px] font-medium transition disabled:opacity-50 inline-flex items-center gap-1.5 ${
+                    settingsMode
+                      ? "bg-accent-primary/10 border-accent-primary/40 text-accent-primary"
+                      : "bg-ink-800 border-fg/[0.08] hover:bg-ink-700"
+                  }`}
+                  title="Configure research depth, sources and provider"
+                >
+                  Settings
+                </button>
                 <button
                   onClick={() => setSourcesMode((s) => !s)}
                   disabled={status === "starting"}

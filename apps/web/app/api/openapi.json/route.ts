@@ -653,6 +653,12 @@ export function buildOpenApiSpec(origin = "https://example.local") {
                       enum: ["trusted", "questionable", "ignored"],
                     },
                     note: { type: ["string", "null"] },
+                    recheck_status: {
+                      type: "string",
+                      enum: ["none", "running", "replacement_found", "resolved"],
+                    },
+                    branch_slug: { type: ["string", "null"] },
+                    source_claim_ids: { type: "array", items: { type: "string" } },
                   },
                 },
               },
@@ -662,6 +668,36 @@ export function buildOpenApiSpec(origin = "https://example.local") {
             "200": { description: "Source trust status updated" },
             "400": { description: "Invalid status or missing URL" },
             "403": { description: "Only owner or admin can update" },
+          },
+        },
+      },
+      "/api/projects/{slug}/sources/diff": {
+        get: {
+          tags: ["projects"],
+          summary: "Compare source-linked claims against a recheck branch",
+          parameters: [
+            { name: "slug", in: "path", required: true, schema: { type: "string" } },
+            { name: "url", in: "query", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": {
+              description: "Claim-level source recheck diff",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      source_url: { type: "string" },
+                      branch_slug: { type: ["string", "null"] },
+                      branch_status: { type: "string" },
+                      changes: { type: "array", items: { type: "object" } },
+                    },
+                  },
+                },
+              },
+            },
+            "400": { description: "Missing URL" },
+            "404": { description: "Project not found" },
           },
         },
       },
@@ -705,6 +741,20 @@ export function buildOpenApiSpec(origin = "https://example.local") {
                   properties: {
                     topic: { type: "string", minLength: 10 },
                     constraints: { type: "string" },
+                    deep_settings: {
+                      type: "object",
+                      properties: {
+                        depth: { type: "string", enum: ["balanced", "deep", "max"] },
+                        target_sources: { type: "integer", minimum: 50, maximum: 500 },
+                        min_questions: { type: "integer", minimum: 5, maximum: 20 },
+                        parallelism: { type: "integer", minimum: 4, maximum: 64 },
+                        provider: { type: "string", enum: ["qwen", "gemini"] },
+                        preferred_source_types: {
+                          type: "array",
+                          items: { type: "string" },
+                        },
+                      },
+                    },
                   },
                 },
               },

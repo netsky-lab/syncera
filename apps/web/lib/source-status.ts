@@ -8,6 +8,9 @@ export interface SourceStatusRecord {
   updated_at: number;
   updated_by: string | null;
   note?: string | null;
+  recheck_status?: "none" | "running" | "replacement_found" | "resolved";
+  branch_slug?: string | null;
+  source_claim_ids?: string[];
 }
 
 function projectsDir(): string {
