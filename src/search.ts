@@ -16,13 +16,36 @@ export async function searchSearXNG(
     pageno: String(pageno),
   });
 
-  let resp: Response;
-  try {
-    resp = await fetch(`${config.searxng.url}/search?${params}`, {
-      headers: { Accept: "application/json" },
-    });
-  } catch (err: any) {
-    console.warn(`[searxng] Network error: ${err?.message ?? String(err)}`);
+  const timeoutMs = positiveIntEnv("SEARXNG_TIMEOUT_MS", 12_000);
+  const attempts = positiveIntEnv("SEARXNG_RETRIES", 2);
+  let resp: Response | null = null;
+  let lastError: string | null = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      resp = await fetch(`${config.searxng.url}/search?${params}`, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      break;
+    } catch (err: any) {
+      clearTimeout(timer);
+      lastError =
+        err?.name === "AbortError"
+          ? `timeout after ${timeoutMs}ms`
+          : err?.message ?? String(err);
+      if (attempt < attempts) {
+        await sleep(500 * attempt);
+        continue;
+      }
+    }
+  }
+
+  if (!resp) {
+    console.warn(`[searxng] Network error: ${lastError ?? "unknown"}`);
     return [];
   }
 
@@ -351,6 +374,11 @@ function extractUrls(text: string): string[] {
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function positiveIntEnv(name: string, fallback: number): number {
+  const raw = Number(process.env[name] ?? "");
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
 }
 
 // --- Dispatcher: SearXNG primary, Arxiv/S2 as academic supplement ---
