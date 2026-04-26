@@ -218,6 +218,7 @@ export async function GET(
       by_provider: providerCounts,
       by_type: sourceTypeCounts,
     },
+    source_status: project.sourceStatus ?? {},
     epistemic_engine: epistemicEngine,
     usage: project.usageSummary,
     questions: questionAudit,

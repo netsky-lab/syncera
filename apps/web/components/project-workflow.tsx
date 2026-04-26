@@ -43,6 +43,7 @@ type Branches = {
 type TabId =
   | "brief"
   | "claims"
+  | "evidence"
   | "debt"
   | "cognition"
   | "sources"
@@ -62,9 +63,36 @@ type SourceRow = {
   type: string | null;
 };
 
+type EvidenceClaimLink = {
+  id: string;
+  statement: string;
+  questionId: string;
+  subquestionId: string;
+  state: string;
+  verdict: string;
+};
+
+type EvidenceRow = {
+  url: string;
+  title: string;
+  host: string;
+  provider: string | null;
+  sourceType: string | null;
+  usefulness: number | null;
+  domainMatch: string | null;
+  questionIds: string[];
+  subquestionIds: string[];
+  linkedClaims: EvidenceClaimLink[];
+  quotes: { claimId: string; quote: string }[];
+  status: "unreviewed" | "trusted" | "questionable" | "ignored";
+  statusRecord: any | null;
+  impactCounts: Record<string, number>;
+};
+
 const tabs: { id: TabId; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { id: "report", label: "Report", icon: FileText },
   { id: "claims", label: "Claims", icon: Network },
+  { id: "evidence", label: "Evidence", icon: Quote },
   { id: "debt", label: "Debt", icon: AlertTriangle },
   { id: "cognition", label: "Cognition", icon: Brain },
   { id: "brief", label: "Brief", icon: ListChecks },
@@ -116,6 +144,19 @@ function debtStatusTone(status: string): string {
       return "bg-ink-700 text-fg-muted border-ink-600";
     default:
       return "bg-accent-amber/10 text-accent-amber border-accent-amber/20";
+  }
+}
+
+function sourceStatusTone(status: string): string {
+  switch (status) {
+    case "trusted":
+      return "bg-accent-sage/10 text-accent-sage border-accent-sage/20";
+    case "questionable":
+      return "bg-accent-amber/10 text-accent-amber border-accent-amber/20";
+    case "ignored":
+      return "bg-accent-red/10 text-accent-red border-accent-red/20";
+    default:
+      return "bg-ink-700 text-fg-muted border-ink-600";
   }
 }
 
@@ -269,8 +310,12 @@ export function ProjectWorkflow({
   const [debtQuery, setDebtQuery] = useState("");
   const [debtStatusFilter, setDebtStatusFilter] = useState("active");
   const [selectedDebtId, setSelectedDebtId] = useState<string | null>(null);
+  const [evidenceQuery, setEvidenceQuery] = useState("");
+  const [evidenceStatusFilter, setEvidenceStatusFilter] = useState("all");
+  const [selectedEvidenceUrl, setSelectedEvidenceUrl] = useState<string | null>(null);
   const [followUpBusy, setFollowUpBusy] = useState<string | null>(null);
   const [debtStatusBusy, setDebtStatusBusy] = useState<string | null>(null);
+  const [sourceStatusBusy, setSourceStatusBusy] = useState<string | null>(null);
   const router = useRouter();
   const { plan, facts, analysisReport, report, sources, verification } = project;
   const questions = (plan.questions ?? []) as any[];
@@ -654,6 +699,110 @@ export function ProjectWorkflow({
       state === "contested" ? 0 : state === "blocked" ? 1 : state === "unverified" ? 2 : 3;
     return priority(a.state) - priority(b.state) || (b.confidence ?? 0) - (a.confidence ?? 0);
   });
+  const evidenceRows = (() => {
+    const byUrl = new Map<string, EvidenceRow>();
+
+    function ensure(url: string, title?: string): EvidenceRow {
+      const existing = byUrl.get(url);
+      if (existing) {
+        if (!existing.title && title) existing.title = title;
+        return existing;
+      }
+      const sourceMeta = sourceRows.find((source) => source.url === url);
+      const statusRecord = project.sourceStatus?.[url] ?? null;
+      const row: EvidenceRow = {
+        url,
+        title: title || sourceMeta?.title || hostOf(url),
+        host: hostOf(url),
+        provider: sourceMeta?.provider ?? null,
+        sourceType: sourceMeta?.type ?? null,
+        usefulness: sourceMeta?.usefulness ?? null,
+        domainMatch: sourceMeta?.domainMatch ?? null,
+        questionIds: sourceMeta?.questionId ? [sourceMeta.questionId] : [],
+        subquestionIds: sourceMeta?.subquestionId ? [sourceMeta.subquestionId] : [],
+        linkedClaims: [],
+        quotes: [],
+        status: (statusRecord?.status ?? "unreviewed") as EvidenceRow["status"],
+        statusRecord,
+        impactCounts: {},
+      };
+      byUrl.set(url, row);
+      return row;
+    }
+
+    for (const source of sourceRows) {
+      const row = ensure(source.url, source.title);
+      if (source.questionId && !row.questionIds.includes(source.questionId)) {
+        row.questionIds.push(source.questionId);
+      }
+      if (source.subquestionId && !row.subquestionIds.includes(source.subquestionId)) {
+        row.subquestionIds.push(source.subquestionId);
+      }
+    }
+
+    for (const claim of claimDetails) {
+      for (const evidence of claim.evidence ?? []) {
+        const url = String(evidence.url ?? "");
+        if (!url) continue;
+        const row = ensure(url, String(evidence.title ?? ""));
+        if (!row.provider && evidence.provider) row.provider = String(evidence.provider);
+        if (!row.sourceType && evidence.sourceType) row.sourceType = String(evidence.sourceType);
+        if (row.usefulness == null && evidence.usefulness != null) {
+          row.usefulness = Number(evidence.usefulness);
+        }
+        if (!row.domainMatch && evidence.domainMatch) {
+          row.domainMatch = String(evidence.domainMatch);
+        }
+        if (claim.questionId && !row.questionIds.includes(claim.questionId)) {
+          row.questionIds.push(claim.questionId);
+        }
+        if (claim.subquestionId && !row.subquestionIds.includes(claim.subquestionId)) {
+          row.subquestionIds.push(claim.subquestionId);
+        }
+        if (!row.linkedClaims.some((linked) => linked.id === claim.id)) {
+          row.linkedClaims.push({
+            id: claim.id,
+            statement: claim.statement,
+            questionId: claim.questionId,
+            subquestionId: claim.subquestionId,
+            state: claim.state,
+            verdict: claim.verdict,
+          });
+        }
+        const quote = String(evidence.exactQuote ?? "");
+        if (
+          quote &&
+          !row.quotes.some((q) => q.claimId === claim.id && q.quote === quote)
+        ) {
+          row.quotes.push({ claimId: claim.id, quote });
+        }
+      }
+    }
+
+    return [...byUrl.values()]
+      .map((row) => ({
+        ...row,
+        impactCounts: row.linkedClaims.reduce<Record<string, number>>((acc, claim) => {
+          acc[claim.state] = (acc[claim.state] ?? 0) + 1;
+          return acc;
+        }, {}),
+      }))
+      .sort((a, b) => {
+        const priority = (status: EvidenceRow["status"]) =>
+          status === "ignored"
+            ? 0
+            : status === "questionable"
+              ? 1
+              : status === "unreviewed"
+                ? 2
+                : 3;
+        return (
+          priority(a.status) - priority(b.status) ||
+          b.linkedClaims.length - a.linkedClaims.length ||
+          a.host.localeCompare(b.host)
+        );
+      });
+  })();
   const visibleClaims = claimDetails.filter((claim) => {
     const q = claimQuery.trim().toLowerCase();
     const matchesQuery =
@@ -693,6 +842,29 @@ export function ProjectWorkflow({
     visibleDebt[0] ??
     researchDebt[0] ??
     null;
+  const visibleEvidence = evidenceRows.filter((row) => {
+    const q = evidenceQuery.trim().toLowerCase();
+    const matchesQuery =
+      !q ||
+      row.title.toLowerCase().includes(q) ||
+      row.url.toLowerCase().includes(q) ||
+      row.host.toLowerCase().includes(q) ||
+      row.provider?.toLowerCase().includes(q) ||
+      row.questionIds.some((id) => id.toLowerCase().includes(q)) ||
+      row.linkedClaims.some(
+        (claim) =>
+          claim.id.toLowerCase().includes(q) ||
+          claim.statement.toLowerCase().includes(q)
+      );
+    const matchesStatus =
+      evidenceStatusFilter === "all" || row.status === evidenceStatusFilter;
+    return matchesQuery && matchesStatus;
+  });
+  const selectedEvidence =
+    visibleEvidence.find((row) => row.url === selectedEvidenceUrl) ??
+    visibleEvidence[0] ??
+    evidenceRows[0] ??
+    null;
 
   async function runFollowUp(
     angle: string,
@@ -700,6 +872,7 @@ export function ProjectWorkflow({
     meta: {
       sourceDebtId?: string;
       sourceClaimIds?: string[];
+      sourceUrl?: string;
       resolutionAxis?: string | null;
       busyKey?: string;
     } = {}
@@ -716,6 +889,7 @@ export function ProjectWorkflow({
           name,
           source_debt_id: meta.sourceDebtId,
           source_claim_ids: meta.sourceClaimIds ?? [],
+          source_url: meta.sourceUrl ?? null,
           resolution_axis: meta.resolutionAxis,
         }),
       });
@@ -751,6 +925,31 @@ export function ProjectWorkflow({
       alert(`Debt update failed: ${err?.message ?? err}`);
     } finally {
       setDebtStatusBusy(null);
+    }
+  }
+
+  async function setSourceTrust(
+    url: string,
+    status: "trusted" | "questionable" | "ignored"
+  ) {
+    setSourceStatusBusy(`${url}:${status}`);
+    try {
+      const r = await fetch(`/api/projects/${slug}/sources/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, status }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        alert(`Source update failed: ${data.error ?? r.status}`);
+        setSourceStatusBusy(null);
+        return;
+      }
+      router.refresh();
+    } catch (err: any) {
+      alert(`Source update failed: ${err?.message ?? err}`);
+    } finally {
+      setSourceStatusBusy(null);
     }
   }
 
@@ -1261,6 +1460,303 @@ export function ProjectWorkflow({
                   ) : (
                     <div className="rounded-md bg-ink-900 p-4 text-[13px] text-fg-muted">
                       No claims available.
+                    </div>
+                  )}
+                </aside>
+              </section>
+            )}
+
+            {activeTab === "evidence" && (
+              <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(360px,0.68fr)]">
+                <div className="min-w-0 rounded-lg border border-fg/[0.06] bg-ink-800 p-4 card-warm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="micro text-fg-muted">Evidence workbench</div>
+                      <div className="mt-1 text-[12px] text-fg-muted">
+                        {visibleEvidence.length}/{evidenceRows.length} sources with claim impact
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-fg/[0.06] bg-ink-900 px-2 py-1 text-[10.5px] text-fg-muted">
+                      {evidenceRows.filter((row) => row.status !== "unreviewed").length} reviewed
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 lg:grid-cols-[minmax(0,1fr)_160px]">
+                    <label className="relative block min-w-0">
+                      <Search
+                        size={14}
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
+                      />
+                      <input
+                        value={evidenceQuery}
+                        onChange={(e) => setEvidenceQuery(e.target.value)}
+                        placeholder="Search sources, quotes, claims..."
+                        className="h-9 w-full rounded-md border border-fg/[0.06] bg-ink-900 pl-8 pr-3 text-[12px] text-fg-dim outline-none transition placeholder:text-fg-muted focus:border-accent-primary/40"
+                      />
+                    </label>
+                    <select
+                      value={evidenceStatusFilter}
+                      onChange={(e) => setEvidenceStatusFilter(e.target.value)}
+                      className="h-9 rounded-md border border-fg/[0.06] bg-ink-900 px-3 text-[12px] text-fg-dim outline-none"
+                    >
+                      <option value="all">All trust</option>
+                      <option value="unreviewed">Unreviewed</option>
+                      <option value="trusted">Trusted</option>
+                      <option value="questionable">Questionable</option>
+                      <option value="ignored">Ignored</option>
+                    </select>
+                  </div>
+
+                  <div className="mt-4 divide-y divide-fg/[0.06] overflow-hidden rounded-md border border-fg/[0.06]">
+                    {visibleEvidence.slice(0, 90).map((row) => {
+                      const selected = selectedEvidence?.url === row.url;
+                      const impacted =
+                        row.status === "ignored" || row.status === "questionable";
+                      return (
+                        <button
+                          key={row.url}
+                          type="button"
+                          onClick={() => setSelectedEvidenceUrl(row.url)}
+                          className={`block w-full min-w-0 bg-ink-900 p-3 text-left transition hover:bg-ink-700 ${
+                            selected ? "bg-accent-primary/[0.08]" : ""
+                          }`}
+                        >
+                          <div className="flex min-w-0 items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="line-clamp-1 text-[13px] text-fg-dim">
+                                {row.title}
+                              </div>
+                              <div className="mt-1 truncate font-mono text-[10.5px] text-fg-muted">
+                                {row.host}
+                              </div>
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full border px-2 py-0.5 text-[10.5px] ${sourceStatusTone(
+                                row.status
+                              )}`}
+                            >
+                              {row.status}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                              {row.linkedClaims.length} claims
+                            </span>
+                            <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                              {row.quotes.length} quotes
+                            </span>
+                            {row.provider && (
+                              <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                                {row.provider}
+                              </span>
+                            )}
+                            {row.sourceType && (
+                              <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                                {row.sourceType}
+                              </span>
+                            )}
+                            {impacted && (
+                              <span className="rounded-full bg-accent-amber/10 px-2 py-0.5 text-[10.5px] text-accent-amber">
+                                impacts {row.linkedClaims.length}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {visibleEvidence.length === 0 && (
+                      <div className="bg-ink-900 p-4 text-[13px] text-fg-muted">
+                        No evidence sources match the current filters.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <aside className="min-w-0 rounded-lg border border-fg/[0.06] bg-ink-800 p-4 card-warm xl:sticky xl:top-6 xl:self-start">
+                  {selectedEvidence ? (
+                    <div className="min-w-0 space-y-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-[10.5px] ${sourceStatusTone(
+                              selectedEvidence.status
+                            )}`}
+                          >
+                            {selectedEvidence.status}
+                          </span>
+                          {selectedEvidence.provider && (
+                            <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                              {selectedEvidence.provider}
+                            </span>
+                          )}
+                          {selectedEvidence.usefulness != null && (
+                            <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                              usefulness {selectedEvidence.usefulness}/3
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-3 text-[15px] leading-relaxed text-fg">
+                          {selectedEvidence.title}
+                        </div>
+                        <a
+                          href={selectedEvidence.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-flex max-w-full items-center gap-1.5 truncate font-mono text-[11px] text-accent-primary hover:underline"
+                        >
+                          <ExternalLink size={13} />
+                          <span className="truncate">{selectedEvidence.url}</span>
+                        </a>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        {["trusted", "questionable", "ignored"].map((status) => (
+                          <button
+                            key={status}
+                            type="button"
+                            disabled={
+                              !canEdit ||
+                              sourceStatusBusy === `${selectedEvidence.url}:${status}` ||
+                              selectedEvidence.status === status
+                            }
+                            onClick={() =>
+                              setSourceTrust(
+                                selectedEvidence.url,
+                                status as "trusted" | "questionable" | "ignored"
+                              )
+                            }
+                            className={`h-8 rounded-md border px-2 text-[11.5px] transition disabled:opacity-50 ${sourceStatusTone(
+                              status
+                            )}`}
+                          >
+                            {status}
+                          </button>
+                        ))}
+                      </div>
+
+                      {(selectedEvidence.status === "questionable" ||
+                        selectedEvidence.status === "ignored") && (
+                        <div className="rounded-md border border-accent-amber/20 bg-accent-amber/[0.05] p-3">
+                          <div className="micro text-accent-amber">Claim impact</div>
+                          <div className="mt-2 text-[12.5px] leading-relaxed text-fg-dim">
+                            This source currently supports {selectedEvidence.linkedClaims.length} claim
+                            {selectedEvidence.linkedClaims.length === 1 ? "" : "s"}; affected claims
+                            should be rechecked or replaced before synthesis trust is increased.
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {Object.entries(selectedEvidence.impactCounts).map(([state, count]) => (
+                              <span
+                                key={state}
+                                className={`rounded-full border px-2 py-0.5 text-[10.5px] ${lifecycleTone(
+                                  state
+                                )}`}
+                              >
+                                {state}: {count}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <div className="micro text-fg-muted">Linked claims</div>
+                        <div className="mt-3 space-y-2">
+                          {selectedEvidence.linkedClaims.slice(0, 12).map((claim) => (
+                            <button
+                              key={claim.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedClaimId(claim.id);
+                                setActiveTab("claims");
+                              }}
+                              className="block w-full rounded-md border border-fg/[0.06] bg-ink-900 p-3 text-left transition hover:bg-ink-700"
+                            >
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-mono text-[10.5px] text-accent-primary">
+                                  {claim.id}
+                                </span>
+                                <span
+                                  className={`rounded-full border px-2 py-0.5 text-[10.5px] ${lifecycleTone(
+                                    claim.state
+                                  )}`}
+                                >
+                                  {claim.state}
+                                </span>
+                                <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                                  {claim.verdict}
+                                </span>
+                              </div>
+                              <div className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-fg-dim">
+                                {claim.statement}
+                              </div>
+                            </button>
+                          ))}
+                          {selectedEvidence.linkedClaims.length === 0 && (
+                            <div className="rounded-md bg-ink-900 p-3 text-[12px] text-fg-muted">
+                              This harvested source is not tied to extracted claims yet.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="micro text-fg-muted">Exact quotes</div>
+                        <div className="mt-3 space-y-2">
+                          {selectedEvidence.quotes.slice(0, 8).map((quote, i) => (
+                            <div
+                              key={`${quote.claimId}-${i}`}
+                              className="rounded-md border border-fg/[0.06] bg-ink-900 p-3"
+                            >
+                              <div className="font-mono text-[10.5px] text-accent-primary">
+                                {quote.claimId}
+                              </div>
+                              <div className="mt-2 flex gap-2 text-[12px] leading-relaxed text-fg-muted">
+                                <Quote
+                                  size={13}
+                                  className="mt-0.5 shrink-0 text-accent-primary"
+                                />
+                                <span>{quote.quote}</span>
+                              </div>
+                            </div>
+                          ))}
+                          {selectedEvidence.quotes.length === 0 && (
+                            <div className="rounded-md bg-ink-900 p-3 text-[12px] text-fg-muted">
+                              No exact quotes recorded for this source.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={followUpBusy === `source:${selectedEvidence.url}`}
+                        onClick={() =>
+                          runFollowUp(
+                            `Recheck source reliability and find stronger replacement evidence for ${selectedEvidence.host}. Source URL: ${selectedEvidence.url}. Current trust status: ${selectedEvidence.status}. Validate or replace these claims: ${selectedEvidence.linkedClaims
+                              .slice(0, 8)
+                              .map((claim) => `${claim.id}: ${claim.statement}`)
+                              .join(" | ")}`,
+                            "recheck-source",
+                            {
+                              sourceClaimIds: selectedEvidence.linkedClaims.map(
+                                (claim) => claim.id
+                              ),
+                              sourceUrl: selectedEvidence.url,
+                              resolutionAxis: "source_recheck",
+                              busyKey: `source:${selectedEvidence.url}`,
+                            }
+                          )
+                        }
+                        className="inline-flex h-9 w-full items-center justify-center rounded-md bg-accent-primary px-3 text-[12px] font-semibold text-ink-900 transition hover:brightness-110 disabled:opacity-50"
+                      >
+                        {followUpBusy === `source:${selectedEvidence.url}`
+                          ? "Starting recheck..."
+                          : "Run source recheck"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="rounded-md bg-ink-900 p-4 text-[13px] text-fg-muted">
+                      Evidence appears after harvest and extraction.
                     </div>
                   )}
                 </aside>

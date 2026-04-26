@@ -79,6 +79,8 @@ export async function POST(
   const sourceClaimIds = Array.isArray(body.source_claim_ids)
     ? body.source_claim_ids.map((x: any) => String(x)).filter(Boolean).slice(0, 20)
     : [];
+  const sourceUrl =
+    body.source_url == null ? null : String(body.source_url).trim();
   const resolutionAxis =
     body.resolution_axis == null ? null : String(body.resolution_axis).trim();
   if (angle.length < 8) {
@@ -137,6 +139,7 @@ export async function POST(
           kind: "extend",
           source_debt_id: sourceDebtId || null,
           source_claim_ids: sourceClaimIds,
+          source_url: sourceUrl || null,
           resolution_axis: resolutionAxis || null,
         },
         null,

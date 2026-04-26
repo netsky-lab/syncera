@@ -285,6 +285,31 @@ describe("getProject", () => {
     expect(p?.debtStatus.D1.status).toBe("resolved");
     expect(p?.debtStatus.D1.branch_slug).toBe("branch-a");
   });
+
+  test("loads source trust status sidecar for project detail", () => {
+    makeProject(
+      "sourced",
+      {
+        "plan.json": { topic: "t", questions: [] },
+        "source_status.json": {
+          "https://example.test/paper": {
+            status: "questionable",
+            updated_at: 456,
+            updated_by: USER_UID,
+            note: "needs a primary source replacement",
+          },
+        },
+      },
+      USER_UID
+    );
+    const p = P.getProject("sourced", USER_UID);
+    expect(p?.sourceStatus["https://example.test/paper"].status).toBe(
+      "questionable"
+    );
+    expect(p?.sourceStatus["https://example.test/paper"].note).toContain(
+      "primary source"
+    );
+  });
 });
 
 describe("canView", () => {

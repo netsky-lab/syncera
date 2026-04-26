@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, existsSync, writeFileSync } from "fs";
 import { join } from "path";
 import { findUserById, listUsers } from "@/lib/users";
 import { readDebtStatus } from "@/lib/debt";
+import { readSourceStatus } from "@/lib/source-status";
 
 // Resolve projects directory per-call so env changes and test setup take
 // effect without a module reload.
@@ -59,6 +60,7 @@ export interface ProjectDetail {
   usageSummary: any | null;
   epistemicGraph: any | null;
   debtStatus: Record<string, any>;
+  sourceStatus: Record<string, any>;
   owner_uid: string | null;
   is_showcase: boolean;
   forkMeta: {
@@ -68,6 +70,7 @@ export interface ProjectDetail {
     suffix: string | null;
     source_debt_id?: string | null;
     source_claim_ids?: string[];
+    source_url?: string | null;
     resolution_axis?: string | null;
   } | null;
 }
@@ -307,6 +310,7 @@ export function getProject(
   const usageSummary = readJson(join(dir, "llm_usage_summary.json"));
   const epistemicGraph = readJson(join(dir, "epistemic_graph.json"));
   const debtStatus = readDebtStatus(slug);
+  const sourceStatus = readSourceStatus(slug);
 
   // Per-unit source files: old schema uses T<n>.json, new schema uses Q<n>[.<m>].json
   const sourcesDir = join(dir, "sources");
@@ -355,6 +359,7 @@ export function getProject(
     usageSummary,
     epistemicGraph,
     debtStatus,
+    sourceStatus,
     owner_uid,
     is_showcase,
     forkMeta: forkMeta
@@ -367,6 +372,7 @@ export function getProject(
           source_claim_ids: Array.isArray(forkMeta.source_claim_ids)
             ? forkMeta.source_claim_ids.map(String)
             : [],
+          source_url: forkMeta.source_url ?? null,
           resolution_axis: forkMeta.resolution_axis ?? null,
         }
       : null,

@@ -582,6 +582,7 @@ export function buildOpenApiSpec(origin = "https://example.local") {
                       cognitive_contract: { type: "object" },
                       metrics: { type: "object" },
                       source_mix: { type: "object" },
+                      source_status: { type: "object" },
                       usage: { type: ["object", "null"] },
                       questions: { type: "array", items: { type: "object" } },
                       verification_summary: { type: ["object", "null"] },
@@ -625,6 +626,41 @@ export function buildOpenApiSpec(origin = "https://example.local") {
           responses: {
             "200": { description: "Debt status updated" },
             "400": { description: "Invalid status" },
+            "403": { description: "Only owner or admin can update" },
+          },
+        },
+      },
+      "/api/projects/{slug}/sources/status": {
+        patch: {
+          tags: ["projects"],
+          summary: "Update source trust status",
+          description:
+            "Owner-or-admin only. Stores a sidecar status for a cited source URL without mutating source or evidence artifacts.",
+          parameters: [
+            { name: "slug", in: "path", required: true, schema: { type: "string" } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["url", "status"],
+                  properties: {
+                    url: { type: "string" },
+                    status: {
+                      type: "string",
+                      enum: ["trusted", "questionable", "ignored"],
+                    },
+                    note: { type: ["string", "null"] },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "Source trust status updated" },
+            "400": { description: "Invalid status or missing URL" },
             "403": { description: "Only owner or admin can update" },
           },
         },
