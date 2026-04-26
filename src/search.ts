@@ -388,13 +388,13 @@ export async function searchAll(
   maxResults = 20
 ): Promise<SearchResult[]> {
   const [web, arxiv, openalex, gemini] = await Promise.all([
-    searchSearXNG(query, { maxResults }),
-    searchArxiv(query, 15),
-    searchOpenAlex(query, 15),
-    searchGeminiGrounding(query),
+    safeSearch("searxng", searchSearXNG(query, { maxResults })),
+    safeSearch("arxiv", searchArxiv(query, 15)),
+    safeSearch("openalex", searchOpenAlex(query, 15)),
+    safeSearch("gemini-grounding", searchGeminiGrounding(query)),
   ]);
 
-  const s2 = await searchSemanticScholar(query, 5);
+  const s2 = await safeSearch("semantic_scholar", searchSemanticScholar(query, 5));
   await sleep(1200); // respect S2 rate limit
 
   const flat = [...web, ...arxiv, ...openalex, ...gemini, ...s2];
@@ -408,4 +408,16 @@ export async function searchAll(
     seen.add(key);
     return true;
   });
+}
+
+async function safeSearch(
+  provider: string,
+  promise: Promise<SearchResult[]>
+): Promise<SearchResult[]> {
+  try {
+    return await promise;
+  } catch (err: any) {
+    console.warn(`[${provider}] Search failed: ${err?.message ?? String(err)}`);
+    return [];
+  }
 }
