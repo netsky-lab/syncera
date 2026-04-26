@@ -55,6 +55,14 @@ describe("buildEpistemicGraph", () => {
           { fact_id: "F2", verdict: "overreach", severity: "major", notes: "too broad" },
         ],
       });
+      writeJson(join(dir, "source_status.json"), {
+        "https://example.com/a": {
+          status: "questionable",
+          updated_at: 1,
+          updated_by: "u_test",
+          note: "secondary source",
+        },
+      });
       writeJson(join(dir, "analysis_report.json"), {
         answers: [
           {
@@ -105,11 +113,16 @@ describe("buildEpistemicGraph", () => {
       expect(graph.summary.claims_contested).toBe(1);
       expect(graph.summary.claims_blocked).toBe(1);
       expect(graph.claims[0]!.evidence[0]!.provider).toBe("searxng");
+      expect(graph.claims[0]!.evidence[0]!.source_trust).toBe("questionable");
+      expect(graph.claims[0]!.confidence).toBeCloseTo(0.52);
       expect(graph.claims[0]!.dependencies.open_questions).toContain(
         "Run a minimal repo benchmark"
       );
       expect(graph.claims[1]!.counterevidence[0]!.verdict).toBe("overreach");
       expect(graph.research_debt.map((d) => d.kind)).toContain("weak_evidence");
+      expect(graph.research_debt.some((d) => d.item.includes("questionable"))).toBe(
+        true
+      );
       expect(graph.contradictions[0]!.involved_facts).toEqual(["F1", "F2"]);
     } finally {
       rmSync(dir, { recursive: true, force: true });

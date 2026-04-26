@@ -117,6 +117,7 @@ export async function POST(
       "scout_digest.json",
       "analysis_report.json",
       "REPORT.md",
+      "source_status.json",
     ]) {
       const src = join(sourceDir, name);
       if (existsSync(src)) cpSync(src, join(newDir, name));

@@ -5,6 +5,11 @@ import type { Fact } from "./schemas/fact";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { z } from "zod";
+import {
+  readSourceStatus,
+  sourceTrustForUrl,
+  type SourceStatusMap,
+} from "./source-status";
 
 const VERIFIER_SYSTEM = `You are an adversarial fact-checker for a research report. Your job is to find any way the given FACT misrepresents the SOURCE. Default to skepticism.
 
@@ -157,11 +162,12 @@ export async function verifyAll(args: {
 }): Promise<Verification[]> {
   const { facts, projectDir, concurrency = 5 } = args;
   const contentDir = join(projectDir, "sources", "content");
+  const sourceStatus = readSourceStatus(projectDir);
 
   console.log(`[verify] ${facts.length} facts to check (concurrency=${concurrency})`);
 
   const verifications = await parallelLimit(facts, concurrency, async (fact, idx) => {
-    return await verifyOne(fact, contentDir, idx);
+    return await verifyOne(fact, contentDir, idx, sourceStatus);
   });
 
   const report = {
@@ -176,7 +182,12 @@ export async function verifyAll(args: {
   return verifications;
 }
 
-async function verifyOne(fact: Fact, contentDir: string, idx: number): Promise<Verification> {
+async function verifyOne(
+  fact: Fact,
+  contentDir: string,
+  idx: number,
+  sourceStatus: SourceStatusMap = {}
+): Promise<Verification> {
   const ref = fact.references?.[0];
   if (!ref || !ref.url) {
     return {
@@ -184,6 +195,16 @@ async function verifyOne(fact: Fact, contentDir: string, idx: number): Promise<V
       verdict: "url_dead",
       severity: "major",
       notes: "Fact has no references",
+    };
+  }
+
+  const trust = sourceTrustForUrl(sourceStatus, ref.url);
+  if (trust === "ignored") {
+    return {
+      fact_id: fact.id,
+      verdict: "ignored_source",
+      severity: "major",
+      notes: `Source manually marked ignored: ${ref.url}`,
     };
   }
 
@@ -241,7 +262,10 @@ Does the fact accurately follow from the source? Output JSON with exactly two fi
       fact_id: fact.id,
       verdict,
       severity,
-      notes: object.notes ?? "",
+      notes:
+        trust === "questionable" && verdict === "verified"
+          ? `Source manually marked questionable; verifier found no direct contradiction. ${object.notes ?? ""}`
+          : object.notes ?? "",
     };
   } catch (err: any) {
     return {
@@ -262,6 +286,7 @@ export function normalizeVerdict(s: string): Verification["verdict"] {
   if (lower.includes("misread") || lower.includes("misunder")) return "misread";
   if (lower.includes("dead") || lower.includes("url")) return "url_dead";
   if (lower.includes("fabric") || lower.includes("quote")) return "quote_fabricated";
+  if (lower.includes("ignored")) return "ignored_source";
   return "verified";
 }
 

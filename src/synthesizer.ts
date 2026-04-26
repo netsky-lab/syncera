@@ -17,6 +17,11 @@ import type { ResearchPlan } from "./schemas/plan";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { z } from "zod";
+import {
+  applySourceTrustToFact,
+  readSourceStatus,
+  sourceTrustForFact,
+} from "./source-status";
 
 export async function synthesize(
   plan: ResearchPlan,
@@ -28,6 +33,14 @@ export async function synthesize(
   const analysis: AnalysisReport = JSON.parse(
     readFileSync(join(projectDir, "analysis_report.json"), "utf-8")
   );
+  const sourceStatus = readSourceStatus(projectDir);
+  const sourceTrustCounts = {
+    trusted: Object.values(sourceStatus).filter((s) => s.status === "trusted").length,
+    questionable: Object.values(sourceStatus).filter(
+      (s) => s.status === "questionable"
+    ).length,
+    ignored: Object.values(sourceStatus).filter((s) => s.status === "ignored").length,
+  };
 
   // Filter to verified
   const verificationPath = join(projectDir, "verification.json");
@@ -40,8 +53,23 @@ export async function synthesize(
     verified = [];
     for (const f of allFacts) {
       const v = verMap.get(f.id);
-      if (!v || v.verdict === "verified") verified.push(f);
-      else rejectedIds.add(f.id);
+      const trust = sourceTrustForFact(sourceStatus, f);
+      if (trust === "ignored") {
+        rejectedIds.add(f.id);
+      } else if (!v || v.verdict === "verified") {
+        verified.push(applySourceTrustToFact(sourceStatus, f));
+      } else {
+        rejectedIds.add(f.id);
+      }
+    }
+  } else {
+    verified = [];
+    for (const f of allFacts) {
+      if (sourceTrustForFact(sourceStatus, f) === "ignored") {
+        rejectedIds.add(f.id);
+      } else {
+        verified.push(applySourceTrustToFact(sourceStatus, f));
+      }
     }
   }
   console.log(
@@ -80,6 +108,16 @@ export async function synthesize(
     `*Evidence: ${verified.length} verified facts${rejectedIds.size ? `, ${rejectedIds.size} rejected` : ""} across ${plan.questions.length} questions*`,
     ""
   );
+  if (
+    sourceTrustCounts.trusted ||
+    sourceTrustCounts.questionable ||
+    sourceTrustCounts.ignored
+  ) {
+    lines.push(
+      `*Source trust overrides: ${sourceTrustCounts.trusted} trusted, ${sourceTrustCounts.questionable} questionable, ${sourceTrustCounts.ignored} ignored*`,
+      ""
+    );
+  }
 
   if (introduction) {
     lines.push("## Introduction", "", introduction, "");
@@ -182,7 +220,7 @@ export async function synthesize(
   // Methodology
   lines.push("## Methodology", "");
   lines.push(
-    `Question-first research pipeline: planner decomposes the topic into ${plan.questions.length} research questions (${plan.questions.reduce((n, q) => n + q.subquestions.length, 0)} subquestions) without pre-committing to numeric thresholds; harvester collects sources per subquestion via SearXNG + Arxiv + OpenAlex + Semantic Scholar (tier-sorted, primary-first); evidence extraction produces structured facts tagged by subquestion; verifier runs three-layer fact-check (URL liveness / quote-keyword consistency / adversarial LLM review); analyzer synthesizes per-question narrative answers grounded only in verified facts (no thresholds fabricated); synthesizer assembles the final report. ${rejectedIds.size} of ${allFacts.length} candidate facts were rejected and are NOT cited.`,
+    `Question-first research pipeline: planner decomposes the topic into ${plan.questions.length} research questions (${plan.questions.reduce((n, q) => n + q.subquestions.length, 0)} subquestions) without pre-committing to numeric thresholds; harvester collects sources per subquestion via SearXNG + Arxiv + OpenAlex + Semantic Scholar (tier-sorted, primary-first); evidence extraction produces structured facts tagged by subquestion; verifier runs three-layer fact-check (URL liveness / quote-keyword consistency / adversarial LLM review); source trust overrides exclude ignored sources and lower confidence for questionable sources; analyzer synthesizes per-question narrative answers grounded only in verified facts (no thresholds fabricated); synthesizer assembles the final report. ${rejectedIds.size} of ${allFacts.length} candidate facts were rejected and are NOT cited.`,
     ""
   );
 

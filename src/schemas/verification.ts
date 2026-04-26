@@ -4,6 +4,7 @@ export const VerdictSchema = z.enum([
   "verified",          // fact accurately follows from source
   "url_dead",          // URL unreachable (deterministic)
   "quote_fabricated",  // exact_quote not found in scraped content (deterministic)
+  "ignored_source",    // source was manually excluded by the project owner/admin
   "overreach",         // fact overstates what source says
   "out_of_context",    // quote stripped from context that changes meaning
   "cherry_picked",     // source discusses multiple views, fact uses one

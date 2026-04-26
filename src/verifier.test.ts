@@ -1,9 +1,13 @@
 import { test, expect, describe } from "bun:test";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import {
   hashUrl,
   normalize,
   extractKeywords,
   normalizeVerdict,
+  verifyAll,
 } from "./verifier";
 
 describe("hashUrl", () => {
@@ -84,9 +88,53 @@ describe("normalizeVerdict", () => {
     expect(normalizeVerdict("misunderstood")).toBe("misread");
     expect(normalizeVerdict("url_dead")).toBe("url_dead");
     expect(normalizeVerdict("quote_fabricated")).toBe("quote_fabricated");
+    expect(normalizeVerdict("ignored_source")).toBe("ignored_source");
   });
 
   test("defaults to verified on unrecognized input (safer than false-rejecting)", () => {
     expect(normalizeVerdict("???")).toBe("verified");
+  });
+});
+
+describe("verifyAll source trust", () => {
+  test("rejects facts whose source is manually ignored before network checks", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "syncera-verify-trust-"));
+    try {
+      mkdirSync(join(dir, "sources", "content"), { recursive: true });
+      writeFileSync(
+        join(dir, "source_status.json"),
+        JSON.stringify({
+          "https://example.test/ignored": {
+            status: "ignored",
+            updated_at: 1,
+            updated_by: "u_test",
+          },
+        })
+      );
+      const verifications = await verifyAll({
+        projectDir: dir,
+        concurrency: 1,
+        facts: [
+          {
+            id: "F1",
+            question_id: "Q1",
+            subquestion_id: "Q1.1",
+            statement: "Ignored source says X.",
+            factuality: "qualitative",
+            confidence: 0.9,
+            references: [
+              {
+                url: "https://example.test/ignored",
+                title: "Ignored",
+                exact_quote: "X",
+              },
+            ],
+          },
+        ],
+      });
+      expect(verifications[0]!.verdict).toBe("ignored_source");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -4,6 +4,12 @@ import type { ResearchPlan } from "./schemas/plan";
 import type { AnalysisReport, Fact } from "./schemas/fact";
 import type { Verification } from "./schemas/verification";
 import type { SourceIndex } from "./schemas/source";
+import {
+  adjustedConfidenceForTrust,
+  readSourceStatus,
+  sourceTrustForFact,
+  sourceTrustForUrl,
+} from "./source-status";
 
 type ClaimState = "verified" | "contested" | "blocked" | "unverified";
 
@@ -55,6 +61,7 @@ export interface EpistemicGraph {
       source_type: string | null;
       usefulness: number | null;
       domain_match: string | null;
+      source_trust: string;
     }>;
     counterevidence: Array<{
       kind: "verification_rejection" | "conflicting_fact";
@@ -190,6 +197,7 @@ export function buildEpistemicGraph(args: {
   );
   const sourcesIndex = readJson<any>(join(projectDir, "sources", "index.json"), null);
   const sourceMeta = sourceMetaByUrl(projectDir);
+  const sourceStatus = readSourceStatus(projectDir);
   const verByFact = new Map(
     (verificationReport.verifications ?? []).map((v: Verification) => [v.fact_id, v])
   );
@@ -227,6 +235,7 @@ export function buildEpistemicGraph(args: {
 
     const evidence = (fact.references ?? []).map((ref) => {
       const meta = sourceMeta.get(ref.url);
+      const trust = sourceTrustForUrl(sourceStatus, ref.url);
       return {
         url: ref.url,
         title: ref.title || meta?.title || "",
@@ -235,8 +244,10 @@ export function buildEpistemicGraph(args: {
         source_type: meta?.source_type ?? null,
         usefulness: meta?.usefulness ?? null,
         domain_match: meta?.domain_match ?? null,
+        source_trust: trust,
       };
     });
+    const sourceTrust = sourceTrustForFact(sourceStatus, fact);
     const collectedAt = uniq(
       evidence
         .map((ref) => sourceMeta.get(ref.url)?.collected_at)
@@ -257,7 +268,10 @@ export function buildEpistemicGraph(args: {
       question_id: fact.question_id,
       subquestion_id: fact.subquestion_id,
       factuality: fact.factuality ?? null,
-      confidence: typeof fact.confidence === "number" ? fact.confidence : null,
+      confidence:
+        typeof fact.confidence === "number"
+          ? adjustedConfidenceForTrust(fact.confidence, sourceTrust)
+          : null,
       lifecycle_state: lifecycleState,
       verdict,
       evidence,
@@ -338,6 +352,26 @@ export function buildEpistemicGraph(args: {
       item: `No accepted sources for ${sq.subquestion_id ?? "subquestion"}.`,
       next_check: `Run targeted source search for ${sq.subquestion_id ?? sq.question_id}.`,
       depends_on_claims: claimsByQuestion.get(sq.question_id ?? "") ?? [],
+    });
+  }
+  const questionableSources = Object.entries(sourceStatus).filter(
+    ([, record]) => record.status === "questionable"
+  );
+  for (const [url, record] of questionableSources) {
+    const dependentClaims = claims
+      .filter((claim) => claim.evidence.some((e) => e.url === url))
+      .map((claim) => claim.id);
+    if (dependentClaims.length === 0) continue;
+    const questionId =
+      claims.find((claim) => dependentClaims.includes(claim.id))?.question_id ?? "";
+    researchDebt.push({
+      id: `D${researchDebt.length + 1}`,
+      question_id: questionId,
+      kind: "weak_evidence",
+      severity: "medium",
+      item: `Source marked questionable supports ${dependentClaims.length} claim${dependentClaims.length === 1 ? "" : "s"}: ${hostOf(url)}.${record.note ? ` Note: ${record.note}` : ""}`,
+      next_check: `Find replacement primary or independently verified evidence for ${hostOf(url)}.`,
+      depends_on_claims: dependentClaims,
     });
   }
 

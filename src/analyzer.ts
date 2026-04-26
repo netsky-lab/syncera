@@ -12,6 +12,11 @@ import type { ResearchPlan } from "./schemas/plan";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { z } from "zod";
+import {
+  applySourceTrustToFact,
+  readSourceStatus,
+  sourceTrustForFact,
+} from "./source-status";
 
 const PER_QUESTION_SYSTEM = `You are a research analyst. Given ONE research question and a pool of verified facts, produce a narrative answer. This is an evidence-grounded synthesis, NOT a verdict against a pre-committed hypothesis.
 
@@ -92,6 +97,7 @@ export async function analyze(
   const facts: Fact[] = JSON.parse(
     readFileSync(join(projectDir, "facts.json"), "utf-8")
   );
+  const sourceStatus = readSourceStatus(projectDir);
 
   // Filter to verified facts using verification.json
   const verificationPath = join(projectDir, "verification.json");
@@ -106,8 +112,19 @@ export async function analyze(
     verified = [];
     for (const f of facts) {
       const v = verMap.get(f.id);
-      if (!v || v.verdict === "verified") {
-        verified.push(f);
+      const trust = sourceTrustForFact(sourceStatus, f);
+      if (trust === "ignored") {
+        rejected.push({
+          fact: f,
+          verification: {
+            fact_id: f.id,
+            verdict: "ignored_source",
+            severity: "major",
+            notes: "Fact cites a source manually marked ignored.",
+          },
+        });
+      } else if (!v || v.verdict === "verified") {
+        verified.push(applySourceTrustToFact(sourceStatus, f));
       } else {
         rejected.push({ fact: f, verification: v });
       }
@@ -115,6 +132,10 @@ export async function analyze(
     console.log(
       `[analyzer] Using ${verified.length} verified / ${rejected.length} rejected (${facts.length} total)`
     );
+  } else {
+    verified = facts
+      .filter((f) => sourceTrustForFact(sourceStatus, f) !== "ignored")
+      .map((f) => applySourceTrustToFact(sourceStatus, f));
   }
 
   const factsById = new Map(verified.map((f) => [f.id, f]));
@@ -155,11 +176,14 @@ export async function analyze(
       .slice(0, 15);
     for (const { f } of scored) pool.set(f.id, f);
 
+    const questionableFactIds = Array.from(pool.values())
+      .filter((f) => sourceTrustForFact(sourceStatus, f) === "questionable")
+      .map((f) => f.id);
     const factList = Array.from(pool.values())
       .slice(0, 30)
       .map(
         (f) =>
-          `[${f.id}] (${f.factuality}, conf ${f.confidence}) ${f.statement}`
+          `[${f.id}] (${f.factuality}, conf ${f.confidence}${sourceTrustForFact(sourceStatus, f) === "questionable" ? ", source questionable" : ""}) ${f.statement}`
       )
       .join("\n");
 
@@ -181,6 +205,17 @@ Return JSON matching the schema — answer, key_facts, conflicting_facts, covera
         endpoint: config.endpoints.critic,
       });
       object.question_id = q.id;
+      if (questionableFactIds.length > 0) {
+        const ids = questionableFactIds.slice(0, 8).join(", ");
+        object.gaps = [
+          ...(object.gaps ?? []),
+          `Source trust risk: facts ${ids} cite source(s) manually marked questionable.`,
+        ];
+        object.follow_ups = [
+          ...(object.follow_ups ?? []),
+          `Find replacement primary or independently verified sources for ${ids}.`,
+        ];
+      }
       answers[i] = object;
     } catch (err: any) {
       console.warn(

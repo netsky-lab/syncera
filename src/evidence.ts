@@ -12,6 +12,11 @@ import {
   evidenceGuidanceBlock,
   type DomainProfile,
 } from "./domain-profile";
+import {
+  adjustedConfidenceForTrust,
+  readSourceStatus,
+  sourceTrustForUrl,
+} from "./source-status";
 import { z } from "zod";
 
 // Extract a list of distinct named entities from learnings before fact
@@ -206,6 +211,7 @@ export async function extractEvidence(
   const evidenceSystem = `${EVIDENCE_SYSTEM}\n\n${evidenceGuidanceBlock(domainProfile)}`;
   const sourcesDir = join(projectDir, "sources");
   const contentDir = join(sourcesDir, "content");
+  const sourceStatus = readSourceStatus(projectDir);
   // Subquestion cache files — the LLM picks the ID shape, so accept any
   // filename that looks like a research-unit: starts with Q or SQ (any
   // case), has digits + optional separators + digits, and ends in .json.
@@ -227,6 +233,17 @@ export async function extractEvidence(
       readFileSync(join(sourcesDir, file), "utf-8")
     );
     if (sourceIndex.results.length === 0) return;
+
+    const activeSources = sourceIndex.results.filter(
+      (r) => sourceTrustForUrl(sourceStatus, r.url) !== "ignored"
+    );
+    const skippedBySourceTrust = sourceIndex.results.length - activeSources.length;
+    if (activeSources.length === 0) {
+      console.log(
+        `[evidence] ${sourceIndex.subquestion_id}: skipped (${skippedBySourceTrust} sources ignored by source trust)`
+      );
+      return;
+    }
 
     const learnings: string[] = (sourceIndex as any).learnings ?? [];
     if (learnings.length === 0) {
@@ -254,7 +271,7 @@ export async function extractEvidence(
     // Relevance gate filter: keep only on/partial with usefulness >= 1.
     // If gate hasn't run (legacy projects), keep everything — verifier
     // is still the final safety net.
-    const relevanceFiltered = sourceIndex.results.filter((r) => {
+    const relevanceFiltered = activeSources.filter((r) => {
       if (!r.relevance) return true; // gate never ran — fall through
       return r.relevance.usefulness >= 1;
     });
@@ -265,6 +282,13 @@ export async function extractEvidence(
     // source tier (primary > blog > community). Extractor takes the best
     // first, bails on token budget.
     const orderedResults = [...relevanceFiltered].sort((a, b) => {
+      const at = sourceTrustForUrl(sourceStatus, a.url);
+      const bt = sourceTrustForUrl(sourceStatus, b.url);
+      const trustScore = (t: string) =>
+        t === "trusted" ? 0 : t === "unreviewed" ? 1 : 2;
+      if (trustScore(at) !== trustScore(bt)) {
+        return trustScore(at) - trustScore(bt);
+      }
       const au = a.relevance?.usefulness ?? 1;
       const bu = b.relevance?.usefulness ?? 1;
       if (au !== bu) return bu - au;
@@ -276,10 +300,12 @@ export async function extractEvidence(
       .map(
         (r, i) => {
           const tier = tierLabel(scoreSource(r.url));
+          const trust = sourceTrustForUrl(sourceStatus, r.url);
           const useful = r.relevance
             ? `, usefulness=${r.relevance.usefulness}`
             : "";
-          return `[S${i + 1}] [${tier}${useful}] ${r.title}\n  ${r.url}`;
+          const trustNote = trust !== "unreviewed" ? `, trust=${trust}` : "";
+          return `[S${i + 1}] [${tier}${useful}${trustNote}] ${r.title}\n  ${r.url}`;
         }
       )
       .join("\n");
@@ -292,6 +318,11 @@ export async function extractEvidence(
     if (skippedByRelevance > 0) {
       console.log(
         `[evidence] ${sourceIndex.subquestion_id}: ${skippedByRelevance} sources skipped by relevance gate`
+      );
+    }
+    if (skippedBySourceTrust > 0) {
+      console.log(
+        `[evidence] ${sourceIndex.subquestion_id}: ${skippedBySourceTrust} sources skipped by source trust`
       );
     }
 
@@ -319,7 +350,7 @@ ${methodPoolBlock}
 LEARNINGS extracted by harvester from full scraped content (${learnings.length}):
 ${learningsBlock}
 
-SOURCES consulted (${sourceIndex.results.length} URLs):
+SOURCES consulted (${sortedResults.length} active URLs, ${skippedBySourceTrust} ignored):
 ${sourceCatalog}
 
 For each learning, produce a fact:
@@ -354,7 +385,7 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
 
         const validRefs = [];
         for (const ref of fact.references ?? []) {
-          const matchingSrc = sourceIndex.results.find(
+          const matchingSrc = activeSources.find(
             (s) =>
               s.url === ref.url ||
               ref.url?.includes(s.url) ||
@@ -369,7 +400,7 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
           } else {
             const best = findBestSourceForLearning(
               fact.statement,
-              sourceIndex.results,
+              activeSources,
               contentDir
             );
             if (best) {
@@ -384,7 +415,7 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
         if (validRefs.length === 0) {
           const best = findBestSourceForLearning(
             fact.statement,
-            sourceIndex.results,
+            activeSources,
             contentDir
           );
           if (best) {
@@ -409,7 +440,7 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
           const primaryHasEntity =
             primaryContent && contentContainsEntity(primaryContent, entity);
           if (!primaryHasEntity) {
-            const better = sourceIndex.results.find((s) => {
+            const better = activeSources.find((s) => {
               if (s.url === primary.url) return false;
               const c = loadFullContent(s.url, contentDir);
               return c ? contentContainsEntity(c, entity) : false;
@@ -427,6 +458,9 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
             }
           }
         }
+
+        const trust = sourceTrustForUrl(sourceStatus, fact.references[0]?.url);
+        fact.confidence = adjustedConfidenceForTrust(fact.confidence, trust);
 
         unitFacts.push(fact);
       }
