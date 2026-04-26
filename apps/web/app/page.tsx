@@ -39,14 +39,15 @@ export default async function DashboardPage() {
       <section>
         <div className="micro text-accent-primary mb-3">Overview</div>
         <h1 className="rl-dash-title">
-          Hypothesis-free research, <em>grounded in</em>{" "}
-          <span className="acc">verified evidence.</span>
+          Deep research, <em>grounded in</em>{" "}
+          <span className="acc">auditable evidence.</span>
         </h1>
         <p className="text-[14px] md:text-[15px] leading-relaxed text-fg-dim max-w-[640px]">
           Enter a topic. The engine decomposes it into literature-driven
-          questions, harvests primary sources across Arxiv, OpenAlex and
-          SearXNG, cross-checks every claim against its cited URL, and
-          synthesizes the findings into a single citable document.
+          questions, harvests sources across Arxiv, OpenAlex, SearXNG and
+          Semantic Scholar, verifies exact-quote facts, tracks source trust
+          and research debt, then synthesizes the findings into a citable
+          report with an audit trail.
         </p>
       </section>
 
@@ -61,7 +62,7 @@ export default async function DashboardPage() {
               Start a new investigation
             </h3>
             <span className="font-mono text-[10.5px] text-fg-muted">
-              typically 30–80 min
+              configurable depth
             </span>
           </div>
           <NewResearchForm />

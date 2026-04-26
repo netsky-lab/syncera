@@ -70,24 +70,24 @@ export function LandingHero() {
         <section className="pt-14 md:pt-20 pb-6 md:pb-10 relative">
           <div className="inline-flex items-center gap-2 font-mono text-[11px] text-fg-dim bg-ink-800 border border-ink-500 px-2.5 py-1 rounded-full mb-7">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent-sage shadow-[0_0_0_3px_rgba(110,231,160,0.12)]" />
-            <span>
-              v0.3 · pipeline live · three-layer verifier ships only verified
-              facts
+          <span>
+              v0.4 · evidence workbench · source trust · recheck branches
             </span>
           </div>
 
           <h1 className="rl-hero-title max-w-[980px]">
-            Verifiable research
+            Deep research you can
             <br />
-            at the <em>speed of a</em> <span className="acc">query.</span>
+            <em>inspect, challenge,</em> and <span className="acc">rerun.</span>
           </h1>
 
           <p className="text-[16px] md:text-[19px] leading-[1.55] text-fg-dim max-w-[640px] mb-10">
             Syncera runs an open, inspectable pipeline from raw topic to
-            cited brief. Every claim ships with its source, its verdict, and
-            the exact quote that produced it —{" "}
+            cited report. Every fact keeps its quote, source, verifier verdict,
+            source-trust status, and research debt, so your team can see what
+            is known, what is weak, and what must be checked next.{" "}
             <strong className="text-fg font-medium">
-              no hallucinated citations, no black boxes.
+              No black-box answer blob.
             </strong>
           </p>
 
@@ -96,7 +96,7 @@ export function LandingHero() {
               href="/signup"
               className="px-[22px] py-[13px] rounded-[9px] bg-accent-primary text-ink-900 text-[14.5px] font-semibold inline-flex items-center gap-2 hover:brightness-110 transition"
             >
-              Run your first investigation
+              Start a research run
               <svg
                 width="14"
                 height="14"
@@ -124,9 +124,9 @@ export function LandingHero() {
               </strong>
             </div>
             <div className="hidden md:block w-px h-3.5 bg-ink-500" />
-            <div>Arxiv · OpenAlex · SearXNG · PubMed · Semantic Scholar</div>
+            <div>Arxiv · OpenAlex · SearXNG · Semantic Scholar</div>
             <div className="hidden md:block w-px h-3.5 bg-ink-500" />
-            <div>Self-hosted LLM on Runpod</div>
+            <div>Qwen or Gemini · self-hostable · OpenAPI</div>
           </div>
         </section>
 
@@ -147,7 +147,7 @@ export function LandingHero() {
               <div className="font-mono text-[12px] text-fg-dim">
                 Topic →{" "}
                 <span className="text-accent-primary">
-                  &quot;Does niacinamide reduce transepidermal water loss?&quot;
+                  &quot;KV-cache capacity for Qwen on one RTX 5090&quot;
                 </span>
               </div>
             </div>
@@ -198,14 +198,15 @@ export function LandingHero() {
             className="text-[32px] md:text-[48px] leading-[1.08] tracking-[-0.028em] font-medium max-w-[820px] mb-5"
             style={{ fontFamily: "var(--font-sans)" }}
           >
-            LLMs are{" "}
+            AI answers are{" "}
             <em className="font-serif font-normal italic text-fg-dim">fast.</em>{" "}
-            LLMs are also confidently wrong about half of what they cite.
+            The expensive part is proving what survives scrutiny.
           </h2>
           <p className="text-[15px] md:text-[17px] leading-[1.6] text-fg-dim max-w-[620px] mb-12">
-            Most &quot;AI research&quot; tools are a single LLM pretending to
-            read papers. Hallucinated citations, missing sources, zero audit
-            trail. You end up redoing the work in 3× the time.
+            Most research tools collapse retrieval, judgment, and writing into
+            one polished answer. That is convenient until a source is weak, two
+            papers disagree, or someone asks which sentence in the report is
+            actually supported.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
@@ -243,18 +244,19 @@ export function LandingHero() {
             className="text-[32px] md:text-[48px] leading-[1.08] tracking-[-0.028em] font-medium max-w-[820px] mb-5"
             style={{ fontFamily: "var(--font-sans)" }}
           >
-            Seven stages. Each one{" "}
+            Eight stages. Each one{" "}
             <em className="font-serif font-normal italic text-fg-dim">
               inspectable,
             </em>{" "}
             <em className="font-serif font-normal italic text-fg-dim">
               reproducible,
             </em>{" "}
-            and cheap to replay.
+            and cheap to rerun.
           </h2>
           <p className="text-[15px] md:text-[17px] leading-[1.6] text-fg-dim max-w-[620px] mb-12">
-            Every run is a DAG of small, deterministic tasks. Fail a step,
-            rerun just that step. Change a model, diff the outputs. No magic.
+            Every run writes filesystem artifacts at each phase. You can rerun
+            scout, planning, harvest, evidence, verification, analysis, source
+            rechecks, or synthesis without throwing away the whole job.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-ink-600 rounded-[14px] overflow-hidden border border-ink-600">
@@ -295,15 +297,16 @@ export function LandingHero() {
             className="text-[32px] md:text-[48px] leading-[1.08] tracking-[-0.028em] font-medium max-w-[820px] mb-5"
             style={{ fontFamily: "var(--font-sans)" }}
           >
-            Full-text, not snippets.{" "}
+            Source control for evidence, not just search results.{" "}
             <em className="font-serif font-normal italic text-fg-dim">
-              Playwright pulls the real paper.
+              Mark weak URLs and rerun only what changed.
             </em>
           </h2>
           <p className="text-[15px] md:text-[17px] leading-[1.6] text-fg-dim max-w-[620px] mb-12">
-            Abstracts alone can&apos;t support a verified claim. Every source goes
-            through headless Chromium so the quote that grounds each fact comes
-            from the actual body of the document, not a Google snippet.
+            Abstracts and snippets are not enough. Syncera fetches full pages,
+            binds facts to exact quotes, then lets you mark sources trusted,
+            questionable, or ignored. Questionable sources create debt; ignored
+            sources are blocked from future synthesis.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
@@ -342,16 +345,16 @@ export function LandingHero() {
                 className="text-[26px] md:text-[32px] leading-[1.15] tracking-[-0.02em] font-medium max-w-[520px] mb-5"
                 style={{ fontFamily: "var(--font-sans)" }}
               >
-                Every fact ships with a{" "}
+                Every fact gets a{" "}
                 <em className="font-serif font-normal italic text-fg-dim">
                   verdict.
                 </em>{" "}
                 Not a vibe.
               </h3>
               <p className="text-[14.5px] md:text-[15px] leading-[1.65] text-fg-dim max-w-[520px]">
-                The three-layer verifier runs URL liveness, exact-quote
-                substring match, and an adversarial LLM review against every
-                extracted fact. Rejected facts never reach the final report.
+                The verifier runs URL liveness, quote-keyword matching, named
+                entity attribution, source-trust enforcement, and adversarial
+                review. Rejected facts never reach the final report.
               </p>
               <ul className="list-none pl-0 mt-6 flex flex-col gap-2.5">
                 <li className="flex gap-3 items-start text-[13.5px] text-fg-dim">
@@ -375,10 +378,10 @@ export function LandingHero() {
                 <li className="flex gap-3 items-start text-[13.5px] text-fg-dim">
                   <span className="text-accent-red font-mono shrink-0">●</span>
                   <strong className="text-fg font-medium font-mono text-[12px] mr-1">
-                    CONTRADICTED
+                    CONTESTED
                   </strong>
                   <span>
-                    Source disagrees with the claim · surfaced, not dropped
+                    Evidence conflicts with another claim · surfaced for review
                   </span>
                 </li>
                 <li className="flex gap-3 items-start text-[13.5px] text-fg-dim">
@@ -440,16 +443,17 @@ export function LandingHero() {
             className="text-[32px] md:text-[44px] leading-[1.08] tracking-[-0.028em] font-medium max-w-[820px] mb-5"
             style={{ fontFamily: "var(--font-sans)" }}
           >
-            Built for the{" "}
+            Built for serious{" "}
             <em className="font-serif font-normal italic text-fg-dim">
-              long-tail daily-driver
+              deep research
             </em>{" "}
             workflow.
           </h2>
           <p className="text-[15px] md:text-[17px] leading-[1.6] text-fg-dim max-w-[620px] mb-12">
-            Self-hosted LLM on flat-rate Runpod, self-hosted SearXNG, local
-            scrape cache. No rate-limit surprises, no per-token metering.
-            Replay any stage for free.
+            Tune a run before it starts: depth, minimum questions, target
+            sources, provider, parallelism, and preferred source types. After
+            it finishes, inspect cost, token use, cognitive score, source mix,
+            open gaps, and recheck branches.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-px bg-ink-600 rounded-[14px] overflow-hidden border border-ink-600">
@@ -490,13 +494,14 @@ export function LandingHero() {
             What you actually get.
           </h2>
           <p className="text-[15px] md:text-[17px] leading-[1.6] text-fg-dim max-w-[620px] mx-auto text-center mb-12">
-            A REPORT.md with citations inline, a PDF ready to ship, and the
-            full JSON audit trail — plan, sources, facts, verdicts, analysis.
+            A REPORT.md with citations inline, a PDF ready to share, plus the
+            artifacts behind it: plan, sources, facts, verifier verdicts,
+            epistemic graph, source trust, and audit JSON.
           </p>
 
           <div className="border border-ink-600 rounded-[14px] bg-ink-800 px-6 md:px-12 py-8 md:py-10 max-w-[780px] mx-auto">
             <div className="font-mono text-[11px] text-fg-faint tracking-[0.06em] mb-4">
-              REPORT.md · run #42a7 · 48m · 15 sub-questions · 978 sources
+              REPORT.md · run #42a7 · deep mode · 8 questions · 312 sources
             </div>
             <h5
               className="text-[20px] md:text-[24px] leading-[1.2] tracking-[-0.018em] font-medium mb-2"
@@ -505,7 +510,7 @@ export function LandingHero() {
               Does niacinamide reduce transepidermal water loss?
             </h5>
             <div className="font-mono text-[11px] text-fg-muted mb-6">
-              149 / 208 facts verified · 12 partial · 4 contradicted
+              146 / 214 facts verified · 9 contested · 17 research-debt items
             </div>
 
             <div className="font-mono text-[10.5px] text-accent-primary tracking-[0.08em] uppercase mt-5 mb-2">
@@ -525,7 +530,7 @@ export function LandingHero() {
               <sup className="text-accent-primary font-mono text-[10.5px] px-0.5">
                 [F47]
               </sup>
-              , though contradicting evidence exists for penetration kinetics
+              , though contested evidence remains around penetration kinetics
               <sup className="text-accent-primary font-mono text-[10.5px] px-0.5">
                 [F44]
               </sup>
@@ -678,8 +683,8 @@ const STATIC_STAGES = [
   {
     num: "01 · SCOUT",
     name: "Decompose",
-    desc: "Map the domain, calibrate the field",
-    log: "→ 412 candidate topics",
+    desc: "Calibrate the domain before planning",
+    log: "→ domain digest",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <circle cx="11" cy="11" r="8" />
@@ -690,8 +695,8 @@ const STATIC_STAGES = [
   {
     num: "02 · PLAN",
     name: "Questions",
-    desc: "Cut topic into 6 × 6 sub-question matrix",
-    log: "→ 15 branches",
+    desc: "Build the question tree",
+    log: "→ 8 questions",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M9 11l3 3L22 4" />
@@ -702,8 +707,8 @@ const STATIC_STAGES = [
   {
     num: "03 · HARVEST",
     name: "Retrieve",
-    desc: "Arxiv + OpenAlex + SearXNG + PubMed",
-    log: "→ 978 sources",
+    desc: "Arxiv + OpenAlex + SearXNG + Semantic Scholar",
+    log: "→ 312 sources",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
@@ -714,8 +719,8 @@ const STATIC_STAGES = [
   {
     num: "04 · VERIFY",
     name: "Cross-check",
-    desc: "URL live → quote substring → LLM adversarial",
-    log: "verifying 184 / 278 claims…",
+    desc: "URL, quote, entity, trust, LLM review",
+    log: "verifying 184 / 214 facts...",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -726,7 +731,7 @@ const STATIC_STAGES = [
   {
     num: "05 · ANALYZE",
     name: "Weigh",
-    desc: "Coverage, contradictions, gaps",
+    desc: "Coverage, tensions, source debt",
     log: "pending",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -739,7 +744,7 @@ const STATIC_STAGES = [
   {
     num: "06 · SYNTH",
     name: "Assemble",
-    desc: "MD + PDF + JSON audit trail",
+    desc: "REPORT.md + PDF + JSON audit trail",
     log: "pending",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -752,8 +757,8 @@ const STATIC_STAGES = [
 
 const PROBLEMS = [
   {
-    title: "Fabricated citations",
-    body: "ChatGPT-style tools invent DOIs that look plausible but point to nothing. You only notice when you try to click.",
+    title: "Unclickable confidence",
+    body: "A fluent answer can hide a missing source, a weak quote, or an outdated benchmark. The prose looks finished before the evidence is.",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -769,8 +774,8 @@ const PROBLEMS = [
     ),
   },
   {
-    title: "Black-box synthesis",
-    body: '"Trust us, we read 40 papers" — with no visible chain from claim → passage → source. Impossible to audit, impossible to debug.',
+    title: "No claim lifecycle",
+    body: "Most tools do not keep claim -> evidence -> counterevidence -> confidence -> open questions as objects you can inspect.",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -785,8 +790,8 @@ const PROBLEMS = [
     ),
   },
   {
-    title: "One-shot outputs",
-    body: "A single LLM call with no verification loop. Every contradiction stays hidden, every nuance gets flattened.",
+    title: "No recheck path",
+    body: "When one source looks questionable, you should not restart the whole project. You need a targeted branch and a claim-level diff.",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -806,8 +811,8 @@ const HOW_STAGES = [
   {
     tick: "01 · SCOUT",
     name: "Scan domain",
-    body: "Fast literature sweep calibrates what exists in the field before we commit to any research questions.",
-    out: "scout.md",
+    body: "Literature sweep calibrates what exists in the field before planning locks in the question tree.",
+    out: "scout_digest.json",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -824,7 +829,7 @@ const HOW_STAGES = [
   {
     tick: "02 · PLAN",
     name: "Decompose",
-    body: "Planner cuts the topic into 3–12 research questions with 2–4 sub-angles each. No invented hypotheses.",
+    body: "Planner creates a question-first map with subquestions. Deep settings can require at least 5 to 20 questions.",
     out: "plan.json",
     icon: (
       <svg
@@ -843,7 +848,7 @@ const HOW_STAGES = [
     tick: "03 · HARVEST",
     name: "Retrieve",
     body: "Parallel fetch from Arxiv, OpenAlex, SearXNG, Semantic Scholar. Playwright pulls full text, not snippets.",
-    out: "200–600 docs",
+    out: "source index + content cache",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -859,7 +864,7 @@ const HOW_STAGES = [
   },
   {
     tick: "04 · EVIDENCE",
-    name: "Claim mining",
+    name: "Fact extraction",
     body: "Atomic factual statements bound to the exact quote in the source. Each fact is a citable unit.",
     out: "facts.json",
     icon: (
@@ -878,8 +883,8 @@ const HOW_STAGES = [
   {
     tick: "05 · VERIFY",
     name: "Three-layer check",
-    body: "L1 URL liveness → L2 quote substring match → L3 LLM adversarial review. Rejected facts don't ship.",
-    out: "verdicts.json",
+    body: "URL liveness, quote matching, named-entity attribution, source-trust enforcement, and adversarial review.",
+    out: "verification.json",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -894,10 +899,10 @@ const HOW_STAGES = [
     ),
   },
   {
-    tick: "06 · ANALYZE + SYNTH",
-    name: "Assemble",
-    body: "Per-question narrative from verified facts + coverage status + cross-question contradictions. REPORT.md + PDF.",
-    out: "REPORT.md, PDF",
+    tick: "06 · EPISTEMIC",
+    name: "Track knowledge",
+    body: "Build claim lifecycle, contradiction map, research debt, source trust impact, and cognitive score.",
+    out: "epistemic_graph.json",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -936,6 +941,13 @@ const SOURCES = [
     name: "SearXNG",
     body: "Self-hosted meta-search across Google / Bing / DuckDuckGo for web-level signals beyond academia.",
   },
+  {
+    tag: "SS",
+    tagClass:
+      "bg-accent-sage/10 text-accent-sage border border-accent-sage/25",
+    name: "Semantic Scholar",
+    body: "Paper-oriented discovery for related work, benchmarks, and citation-backed context.",
+  },
 ];
 
 const VERIFY_DEMO = [
@@ -951,7 +963,7 @@ const VERIFY_DEMO = [
     num: "F043",
     claim: "Effect size is comparable across Fitzpatrick skin types.",
     src: "Navarrete-Solís 2011 only",
-    verdict: "~ PARTIAL",
+    verdict: "~ QUESTIONABLE",
     verdictClass:
       "text-accent-amber bg-accent-amber/10 border border-accent-amber/20",
   },
@@ -960,7 +972,7 @@ const VERIFY_DEMO = [
     claim:
       "Topical niacinamide penetrates the stratum corneum in < 10 min.",
     src: "Gehring 2004 vs Tanno 2000",
-    verdict: "✗ CONTRADICTED",
+    verdict: "✗ CONTESTED",
     verdictClass:
       "text-accent-red bg-accent-red/10 border border-accent-red/20",
   },
@@ -977,28 +989,28 @@ const VERIFY_DEMO = [
 
 const SPECS = [
   {
-    k: "Median run",
-    v: "48",
-    unit: "min",
-    d: "Topic → verified REPORT.md + PDF end-to-end.",
+    k: "Deep settings",
+    v: "5-20",
+    unit: "q",
+    d: "Minimum question count is explicit before a run starts.",
   },
   {
-    k: "Facts / run",
-    v: "208",
-    unit: "avg",
-    d: "Atomic, citable, each with an L1/L2/L3 verdict.",
+    k: "Source target",
+    v: "50-500",
+    unit: "urls",
+    d: "Tune breadth by topic, budget, and provider capacity.",
   },
   {
-    k: "Fact kill-rate",
-    v: "28",
+    k: "Parallelism",
+    v: "4-64",
+    unit: "slots",
+    d: "Useful for local Qwen slots or Gemini fan-out.",
+  },
+  {
+    k: "Audit trail",
+    v: "100",
     unit: "%",
-    d: "Verifier rejects this share before they reach the report.",
-  },
-  {
-    k: "Replay a stage",
-    v: "~0",
-    unit: "¢",
-    d: "Artefacts cached; --replan / --re-synth cost nothing.",
+    d: "Plan, facts, verification, analysis, graph, report.",
   },
 ];
 
