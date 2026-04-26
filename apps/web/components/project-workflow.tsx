@@ -15,10 +15,13 @@ import {
   GitBranch,
   Library,
   ListChecks,
+  Network,
+  Quote,
   Search,
   Share2,
   ShieldCheck,
   Sparkles,
+  X,
 } from "lucide-react";
 import type { ProjectDetail, ProjectSummary } from "@/lib/projects";
 import { ComparePicker } from "@/components/compare-picker";
@@ -36,7 +39,14 @@ type Branches = {
   siblings: ProjectSummary[];
 };
 
-type TabId = "brief" | "cognition" | "sources" | "coverage" | "versions" | "report";
+type TabId =
+  | "brief"
+  | "claims"
+  | "cognition"
+  | "sources"
+  | "coverage"
+  | "versions"
+  | "report";
 
 type SourceRow = {
   key: string;
@@ -52,6 +62,7 @@ type SourceRow = {
 
 const tabs: { id: TabId; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { id: "report", label: "Report", icon: FileText },
+  { id: "claims", label: "Claims", icon: Network },
   { id: "cognition", label: "Cognition", icon: Brain },
   { id: "brief", label: "Brief", icon: ListChecks },
   { id: "sources", label: "Sources", icon: Library },
@@ -235,6 +246,9 @@ export function ProjectWorkflow({
   const [sourceQuery, setSourceQuery] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
   const [sourceQuality, setSourceQuality] = useState<"all" | "useful">("all");
+  const [claimQuery, setClaimQuery] = useState("");
+  const [claimStateFilter, setClaimStateFilter] = useState("all");
+  const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
   const { plan, facts, analysisReport, report, sources, verification } = project;
   const questions = (plan.questions ?? []) as any[];
   const constraints = Array.isArray(plan.constraints) ? plan.constraints : [];
@@ -459,6 +473,145 @@ export function ProjectWorkflow({
   const contradictionMap = graphContradictionMap.length
     ? graphContradictionMap
     : derivedContradictionMap;
+  const graphClaimDetails = ((project.epistemicGraph?.claims ?? []) as any[]).map(
+    (claim: any) => ({
+      id: String(claim.id ?? ""),
+      statement: String(claim.statement ?? ""),
+      questionId: String(claim.question_id ?? ""),
+      subquestionId: String(claim.subquestion_id ?? ""),
+      state: String(claim.lifecycle_state ?? "unverified"),
+      verdict: String(claim.verdict ?? "unverified"),
+      confidence:
+        typeof claim.confidence === "number"
+          ? Math.round(claim.confidence * 100)
+          : null,
+      factuality: claim.factuality ? String(claim.factuality) : null,
+      evidence: ((claim.evidence ?? []) as any[]).map((e: any) => ({
+        url: String(e.url ?? ""),
+        title: String(e.title ?? e.url ?? ""),
+        exactQuote: String(e.exact_quote ?? ""),
+        provider: e.provider ? String(e.provider) : null,
+        sourceType: e.source_type ? String(e.source_type) : null,
+        usefulness:
+          typeof e.usefulness === "number" ? e.usefulness : null,
+        domainMatch: e.domain_match ? String(e.domain_match) : null,
+      })),
+      counterevidence: ((claim.counterevidence ?? []) as any[]).map((c: any) => ({
+        kind: String(c.kind ?? "counterevidence"),
+        factId: c.fact_id ? String(c.fact_id) : null,
+        verdict: c.verdict ? String(c.verdict) : null,
+        severity: c.severity ? String(c.severity) : null,
+        notes: String(c.notes ?? ""),
+        correctedStatement: c.corrected_statement
+          ? String(c.corrected_statement)
+          : null,
+      })),
+      freshness: claim.freshness ?? null,
+      dependencies: {
+        questionCoverage: String(claim.dependencies?.question_coverage ?? "pending"),
+        isKeyFact: Boolean(claim.dependencies?.is_key_fact),
+        conflictingFacts: (claim.dependencies?.conflicting_facts ?? []) as string[],
+        sourceHosts: (claim.dependencies?.source_hosts ?? []) as string[],
+        openQuestions: (claim.dependencies?.open_questions ?? []) as string[],
+      },
+    })
+  );
+  const fallbackClaimDetails = (facts ?? []).map((fact: any) => {
+    const verificationRow = verMap.get(fact.id) as any;
+    const verdict = String(verificationRow?.verdict ?? "unverified");
+    const answer = answerByQuestion.get(fact.question_id) as any;
+    const conflicts = (answer?.conflicting_facts ?? []).filter(
+      (c: any) => c.fact_a === fact.id || c.fact_b === fact.id
+    );
+    const state =
+      verdict === "verified"
+        ? conflicts.length
+          ? "contested"
+          : "verified"
+        : verdict === "unverified"
+          ? "unverified"
+          : "blocked";
+    return {
+      id: String(fact.id ?? ""),
+      statement: String(fact.statement ?? ""),
+      questionId: String(fact.question_id ?? ""),
+      subquestionId: String(fact.subquestion_id ?? ""),
+      state,
+      verdict,
+      confidence:
+        typeof fact.confidence === "number"
+          ? Math.round(fact.confidence * 100)
+          : null,
+      factuality: fact.factuality ? String(fact.factuality) : null,
+      evidence: ((fact.references ?? []) as any[]).map((ref: any) => ({
+        url: String(ref.url ?? ""),
+        title: String(ref.title ?? ref.url ?? ""),
+        exactQuote: String(ref.exact_quote ?? ""),
+        provider: null,
+        sourceType: null,
+        usefulness: null,
+        domainMatch: null,
+      })),
+      counterevidence:
+        verificationRow && verificationRow.verdict !== "verified"
+          ? [
+              {
+                kind: "verification_rejection",
+                factId: null,
+                verdict,
+                severity: verificationRow.severity ?? null,
+                notes: String(verificationRow.notes ?? ""),
+                correctedStatement: verificationRow.corrected_statement ?? null,
+              },
+            ]
+          : conflicts.map((c: any) => ({
+              kind: "conflicting_fact",
+              factId: c.fact_a === fact.id ? c.fact_b : c.fact_a,
+              verdict: null,
+              severity: null,
+              notes: String(c.nature ?? ""),
+              correctedStatement: null,
+            })),
+      freshness: null,
+      dependencies: {
+        questionCoverage: String(answer?.coverage ?? "pending"),
+        isKeyFact: (answer?.key_facts ?? []).includes(fact.id),
+        conflictingFacts: conflicts.map((c: any) =>
+          c.fact_a === fact.id ? c.fact_b : c.fact_a
+        ),
+        sourceHosts: ((fact.references ?? []) as any[]).map((ref: any) =>
+          ref.url ? hostOf(String(ref.url)) : ""
+        ),
+        openQuestions: [...(answer?.gaps ?? []), ...(answer?.follow_ups ?? [])],
+      },
+    };
+  });
+  const claimDetails = (graphClaimDetails.length
+    ? graphClaimDetails
+    : fallbackClaimDetails
+  ).sort((a, b) => {
+    const priority = (state: string) =>
+      state === "contested" ? 0 : state === "blocked" ? 1 : state === "unverified" ? 2 : 3;
+    return priority(a.state) - priority(b.state) || (b.confidence ?? 0) - (a.confidence ?? 0);
+  });
+  const visibleClaims = claimDetails.filter((claim) => {
+    const q = claimQuery.trim().toLowerCase();
+    const matchesQuery =
+      !q ||
+      claim.id.toLowerCase().includes(q) ||
+      claim.statement.toLowerCase().includes(q) ||
+      claim.questionId.toLowerCase().includes(q) ||
+      claim.subquestionId.toLowerCase().includes(q) ||
+      claim.verdict.toLowerCase().includes(q);
+    const matchesState =
+      claimStateFilter === "all" || claim.state === claimStateFilter;
+    return matchesQuery && matchesState;
+  });
+  const selectedClaim =
+    visibleClaims.find((claim) => claim.id === selectedClaimId) ??
+    visibleClaims[0] ??
+    claimDetails[0] ??
+    null;
 
   return (
     <div className="min-h-screen overflow-x-hidden">
@@ -651,6 +804,326 @@ export function ProjectWorkflow({
                   </div>
                 </section>
               </div>
+            )}
+
+            {activeTab === "claims" && (
+              <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(360px,0.68fr)]">
+                <div className="min-w-0 rounded-lg border border-fg/[0.06] bg-ink-800 p-4 card-warm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="micro text-fg-muted">Claims</div>
+                      <div className="mt-1 text-[12px] text-fg-muted">
+                        {visibleClaims.length}/{claimDetails.length} visible
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-fg/[0.06] bg-ink-900 px-2 py-1 text-[10.5px] text-fg-muted">
+                      {project.epistemicGraph ? "epistemic graph" : "fallback"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 lg:grid-cols-[minmax(0,1fr)_150px]">
+                    <label className="relative block min-w-0">
+                      <Search
+                        size={14}
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
+                      />
+                      <input
+                        value={claimQuery}
+                        onChange={(e) => setClaimQuery(e.target.value)}
+                        placeholder="Search claims, verdicts, questions..."
+                        className="h-9 w-full rounded-md border border-fg/[0.06] bg-ink-900 pl-8 pr-3 text-[12px] text-fg-dim outline-none transition placeholder:text-fg-muted focus:border-accent-primary/40"
+                      />
+                    </label>
+                    <select
+                      value={claimStateFilter}
+                      onChange={(e) => setClaimStateFilter(e.target.value)}
+                      className="h-9 rounded-md border border-fg/[0.06] bg-ink-900 px-3 text-[12px] text-fg-dim outline-none"
+                    >
+                      <option value="all">All states</option>
+                      <option value="verified">Verified</option>
+                      <option value="blocked">Blocked</option>
+                      <option value="contested">Contested</option>
+                      <option value="unverified">Unverified</option>
+                    </select>
+                  </div>
+
+                  <div className="mt-4 divide-y divide-fg/[0.06] overflow-hidden rounded-md border border-fg/[0.06]">
+                    {visibleClaims.slice(0, 80).map((claim) => {
+                      const selected = selectedClaim?.id === claim.id;
+                      return (
+                        <button
+                          key={claim.id}
+                          type="button"
+                          onClick={() => setSelectedClaimId(claim.id)}
+                          className={`block w-full min-w-0 bg-ink-900 p-3 text-left transition hover:bg-ink-700 ${
+                            selected ? "bg-accent-primary/[0.08]" : ""
+                          }`}
+                        >
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <span className="font-mono text-[10.5px] text-accent-primary">
+                              {claim.id}
+                            </span>
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10.5px] ${lifecycleTone(
+                                claim.state
+                              )}`}
+                            >
+                              {claim.state}
+                            </span>
+                            <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                              {claim.verdict}
+                            </span>
+                            {claim.confidence != null && (
+                              <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                                {claim.confidence}%
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-2 line-clamp-2 text-[12.5px] leading-relaxed text-fg-dim">
+                            {claim.statement}
+                          </div>
+                          <div className="mt-2 flex min-w-0 flex-wrap gap-1.5 text-[10.5px] text-fg-muted">
+                            <span className="rounded-full bg-ink-700 px-2 py-0.5">
+                              {claim.questionId}
+                              {claim.subquestionId ? `:${claim.subquestionId}` : ""}
+                            </span>
+                            <span className="rounded-full bg-ink-700 px-2 py-0.5">
+                              {claim.evidence.length} evidence
+                            </span>
+                            {claim.dependencies.openQuestions.length > 0 && (
+                              <span className="rounded-full bg-accent-amber/10 px-2 py-0.5 text-accent-amber">
+                                debt
+                              </span>
+                            )}
+                            {claim.dependencies.isKeyFact && (
+                              <span className="rounded-full bg-accent-primary/10 px-2 py-0.5 text-accent-primary">
+                                key
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {visibleClaims.length === 0 && (
+                      <div className="bg-ink-900 p-4 text-[13px] text-fg-muted">
+                        No claims match the current filters.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <aside className="min-w-0 rounded-lg border border-fg/[0.06] bg-ink-800 p-4 card-warm xl:sticky xl:top-6 xl:self-start">
+                  {selectedClaim ? (
+                    <div className="min-w-0 space-y-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-mono text-[11px] text-accent-primary">
+                            {selectedClaim.id}
+                          </span>
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-[10.5px] ${lifecycleTone(
+                              selectedClaim.state
+                            )}`}
+                          >
+                            {selectedClaim.state}
+                          </span>
+                          <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                            {selectedClaim.verdict}
+                          </span>
+                        </div>
+                        <div className="mt-3 text-[15px] leading-relaxed text-fg">
+                          {selectedClaim.statement}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-md bg-ink-900 p-3">
+                          <div className="micro text-fg-muted">Confidence</div>
+                          <div className="tnum mt-2 text-xl font-semibold text-fg">
+                            {selectedClaim.confidence == null
+                              ? "—"
+                              : `${selectedClaim.confidence}%`}
+                          </div>
+                        </div>
+                        <div className="rounded-md bg-ink-900 p-3">
+                          <div className="micro text-fg-muted">Coverage</div>
+                          <div className="mt-2 text-[13px] text-fg-dim">
+                            {selectedClaim.dependencies.questionCoverage.replace(/_/g, " ")}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-md border border-fg/[0.06] bg-ink-900 p-3">
+                        <div className="micro text-fg-muted">Dependencies</div>
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                            {selectedClaim.questionId}
+                            {selectedClaim.subquestionId
+                              ? `:${selectedClaim.subquestionId}`
+                              : ""}
+                          </span>
+                          {selectedClaim.factuality && (
+                            <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                              {selectedClaim.factuality}
+                            </span>
+                          )}
+                          {selectedClaim.dependencies.sourceHosts
+                            .filter(Boolean)
+                            .slice(0, 4)
+                            .map((host: string) => (
+                              <span
+                                key={host}
+                                className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted"
+                              >
+                                {host}
+                              </span>
+                            ))}
+                          {selectedClaim.dependencies.conflictingFacts.map((factId: string) => (
+                            <button
+                              key={factId}
+                              type="button"
+                              onClick={() => setSelectedClaimId(factId)}
+                              className="rounded-full bg-accent-amber/10 px-2 py-0.5 text-[10.5px] text-accent-amber transition hover:bg-accent-amber/20"
+                            >
+                              conflicts {factId}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="micro text-fg-muted">Evidence</div>
+                        <div className="mt-3 space-y-2">
+                          {selectedClaim.evidence.slice(0, 5).map((evidence: any, i: number) => (
+                            <a
+                              key={`${evidence.url}-${i}`}
+                              href={evidence.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block min-w-0 rounded-md border border-fg/[0.06] bg-ink-900 p-3 transition hover:bg-ink-700"
+                            >
+                              <div className="flex min-w-0 items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="line-clamp-1 text-[12.5px] text-fg-dim">
+                                    {evidence.title || hostOf(evidence.url)}
+                                  </div>
+                                  <div className="mt-1 truncate font-mono text-[10px] text-fg-muted">
+                                    {hostOf(evidence.url)}
+                                  </div>
+                                </div>
+                                <ExternalLink
+                                  size={13}
+                                  className="mt-0.5 shrink-0 text-fg-muted"
+                                />
+                              </div>
+                              {evidence.exactQuote && (
+                                <div className="mt-3 flex gap-2 text-[12px] leading-relaxed text-fg-muted">
+                                  <Quote
+                                    size={13}
+                                    className="mt-0.5 shrink-0 text-accent-primary"
+                                  />
+                                  <span className="line-clamp-3">
+                                    {evidence.exactQuote}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {evidence.provider && (
+                                  <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10px] text-fg-muted">
+                                    {evidence.provider}
+                                  </span>
+                                )}
+                                {evidence.sourceType && (
+                                  <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10px] text-fg-muted">
+                                    {evidence.sourceType}
+                                  </span>
+                                )}
+                                {evidence.usefulness != null && (
+                                  <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10px] text-fg-muted">
+                                    usefulness {evidence.usefulness}/3
+                                  </span>
+                                )}
+                              </div>
+                            </a>
+                          ))}
+                          {selectedClaim.evidence.length === 0 && (
+                            <div className="rounded-md bg-ink-900 p-3 text-[12px] text-fg-muted">
+                              No evidence links recorded.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {selectedClaim.counterevidence.length > 0 && (
+                        <div>
+                          <div className="micro text-fg-muted">Counterevidence</div>
+                          <div className="mt-3 space-y-2">
+                            {selectedClaim.counterevidence.map((counter: any, i: number) => (
+                              <div
+                                key={`${counter.kind}-${counter.factId ?? i}`}
+                                className="rounded-md border border-accent-red/15 bg-accent-red/[0.04] p-3"
+                              >
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <X size={13} className="text-accent-red" />
+                                  <span className="rounded-full bg-accent-red/10 px-2 py-0.5 text-[10.5px] text-accent-red">
+                                    {counter.verdict ?? counter.kind}
+                                  </span>
+                                  {counter.severity && (
+                                    <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                                      {counter.severity}
+                                    </span>
+                                  )}
+                                  {counter.factId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedClaimId(counter.factId)}
+                                      className="rounded-full bg-accent-amber/10 px-2 py-0.5 text-[10.5px] text-accent-amber transition hover:bg-accent-amber/20"
+                                    >
+                                      {counter.factId}
+                                    </button>
+                                  )}
+                                </div>
+                                {counter.notes && (
+                                  <div className="mt-2 text-[12px] leading-relaxed text-fg-dim">
+                                    {counter.notes}
+                                  </div>
+                                )}
+                                {counter.correctedStatement && (
+                                  <div className="mt-2 rounded bg-ink-900 px-2 py-1.5 text-[12px] leading-relaxed text-fg-muted">
+                                    {counter.correctedStatement}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedClaim.dependencies.openQuestions.length > 0 && (
+                        <div>
+                          <div className="micro text-fg-muted">Research debt</div>
+                          <div className="mt-3 space-y-2">
+                            {selectedClaim.dependencies.openQuestions
+                              .slice(0, 6)
+                              .map((item: string, i: number) => (
+                                <div
+                                  key={`${selectedClaim.id}-debt-${i}`}
+                                  className="rounded-md bg-ink-900 p-3 text-[12px] leading-relaxed text-fg-dim"
+                                >
+                                  {item}
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-md bg-ink-900 p-4 text-[13px] text-fg-muted">
+                      No claims available.
+                    </div>
+                  )}
+                </aside>
+              </section>
             )}
 
             {activeTab === "cognition" && (
