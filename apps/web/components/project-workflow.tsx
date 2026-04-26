@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { ComponentType } from "react";
 import { useMemo, useState } from "react";
 import {
@@ -207,6 +208,7 @@ function phaseRows(project: ProjectDetail) {
     ["Evidence", (project.facts ?? []).length > 0],
     ["Verify", Boolean(project.verification?.summary)],
     ["Analyze", Boolean(project.analysisReport?.answers?.length)],
+    ["Contradictions", Boolean(project.epistemicGraph?.contradiction_pass)],
     ["Synthesis", Boolean(project.report)],
   ] as const;
 }
@@ -249,6 +251,8 @@ export function ProjectWorkflow({
   const [claimQuery, setClaimQuery] = useState("");
   const [claimStateFilter, setClaimStateFilter] = useState("all");
   const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
+  const [followUpBusy, setFollowUpBusy] = useState<string | null>(null);
+  const router = useRouter();
   const { plan, facts, analysisReport, report, sources, verification } = project;
   const questions = (plan.questions ?? []) as any[];
   const constraints = Array.isArray(plan.constraints) ? plan.constraints : [];
@@ -446,28 +450,43 @@ export function ProjectWorkflow({
   const derivedContradictionMap = [
     ...answers.flatMap((answer: any) =>
       (answer.conflicting_facts ?? []).map((conflict: any) => ({
-        scope: "Within question",
-        label: String(answer.question_id ?? ""),
-        facts: [conflict.fact_a, conflict.fact_b].filter(Boolean).join(" vs "),
-        difference: String(conflict.nature ?? ""),
-      }))
+      scope: "Within question",
+      verdict: "contradiction",
+      label: String(answer.question_id ?? ""),
+      facts: [conflict.fact_a, conflict.fact_b].filter(Boolean).join(" vs "),
+      difference: String(conflict.nature ?? ""),
+      resolutionAxes: ["benchmark", "workload"],
+      nextCheck: null as string | null,
+      confidence: null as number | null,
+    }))
     ),
     ...(analysisReport?.cross_question_tensions ?? []).map((t: any) => ({
       scope: "Cross-question",
+      verdict: "contradiction",
       label: (t.involved_questions ?? []).join(", "),
       facts: (t.involved_facts ?? []).join(", "),
       difference: String(t.description ?? ""),
+      resolutionAxes: ["scope"],
+      nextCheck: null as string | null,
+      confidence: null as number | null,
     })),
   ];
   const graphContradictionMap = ((project.epistemicGraph?.contradictions ?? []) as any[]).map(
     (item: any) => ({
       scope:
         item.scope === "cross_question" ? "Cross-question" : "Within question",
+      verdict: item.verdict ? String(item.verdict) : "contradiction",
       label: item.question_id
         ? String(item.question_id)
         : (item.involved_questions ?? []).join(", "),
       facts: (item.involved_facts ?? []).join(", "),
       difference: String(item.difference ?? ""),
+      resolutionAxes: (item.resolution_axes ?? []) as string[],
+      nextCheck: item.next_check ? String(item.next_check) : null,
+      confidence:
+        typeof item.confidence === "number"
+          ? Math.round(item.confidence * 100)
+          : null,
     })
   );
   const contradictionMap = graphContradictionMap.length
@@ -612,6 +631,28 @@ export function ProjectWorkflow({
     visibleClaims[0] ??
     claimDetails[0] ??
     null;
+
+  async function runFollowUp(angle: string, name = "resolve-contradiction") {
+    if (!angle.trim()) return;
+    setFollowUpBusy(angle);
+    try {
+      const r = await fetch(`/api/projects/${slug}/extend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ angle, name }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        alert(`Follow-up failed: ${data.error ?? r.status}`);
+        setFollowUpBusy(null);
+        return;
+      }
+      router.push(`/projects/${data.slug}`);
+    } catch (err: any) {
+      alert(`Follow-up failed: ${err?.message ?? err}`);
+      setFollowUpBusy(null);
+    }
+  }
 
   return (
     <div className="min-h-screen overflow-x-hidden">
@@ -1336,7 +1377,9 @@ export function ProjectWorkflow({
                       >
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="rounded-full bg-accent-amber/10 px-2 py-0.5 text-[10.5px] text-accent-amber">
-                            {item.scope}
+                            {item.verdict === "different_context"
+                              ? "Different context"
+                              : item.scope}
                           </span>
                           {item.label && (
                             <span className="font-mono text-[10.5px] text-fg-muted">
@@ -1352,6 +1395,37 @@ export function ProjectWorkflow({
                             {item.facts}
                           </div>
                         )}
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                          {item.confidence != null && (
+                            <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted">
+                              {item.confidence}% confidence
+                            </span>
+                          )}
+                          {item.resolutionAxes.slice(0, 4).map((axis: string) => (
+                            <span
+                              key={axis}
+                              className="rounded-full bg-ink-700 px-2 py-0.5 text-[10.5px] text-fg-muted"
+                            >
+                              {axis.replace(/_/g, " ")}
+                            </span>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={followUpBusy === (item.nextCheck ?? item.difference)}
+                          onClick={() =>
+                            runFollowUp(
+                              item.nextCheck ??
+                                `Resolve this contradiction: ${item.difference}. Compare claims ${item.facts}; identify whether the difference comes from version, benchmark, workload, source type, date, metric, or scope.`,
+                              "resolve-contradiction"
+                            )
+                          }
+                          className="mt-3 inline-flex h-8 items-center rounded-md border border-fg/[0.06] bg-ink-800 px-3 text-[11.5px] font-medium text-fg-dim transition hover:bg-ink-700 disabled:opacity-50"
+                        >
+                          {followUpBusy === (item.nextCheck ?? item.difference)
+                            ? "Starting..."
+                            : "Run follow-up"}
+                        </button>
                       </div>
                     ))}
                     {contradictionMap.length === 0 && (

@@ -33,6 +33,11 @@ export interface EpistemicGraph {
     research_debt_items: number;
     contradictions: number;
   };
+  contradiction_pass?: {
+    checked_at: string;
+    candidates: number;
+    accepted: number;
+  };
   claims: Array<{
     id: string;
     statement: string;
@@ -88,8 +93,11 @@ export interface EpistemicGraph {
     question_id: string | null;
     involved_questions: string[];
     involved_facts: string[];
+    verdict?: "contradiction" | "different_context";
     difference: string;
     resolution_axes: string[];
+    next_check?: string;
+    confidence?: number;
   }>;
 }
 
@@ -342,6 +350,7 @@ export function buildEpistemicGraph(args: {
         question_id: answer.question_id,
         involved_questions: [answer.question_id],
         involved_facts: [conflict.fact_a, conflict.fact_b].filter(Boolean),
+        verdict: "contradiction",
         difference: conflict.nature,
         resolution_axes: [
           "source/version mismatch",
@@ -358,6 +367,7 @@ export function buildEpistemicGraph(args: {
       question_id: null,
       involved_questions: tension.involved_questions ?? [],
       involved_facts: tension.involved_facts ?? [],
+      verdict: "contradiction",
       difference: tension.description,
       resolution_axes: [
         "different objectives",

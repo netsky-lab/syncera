@@ -9,6 +9,7 @@ import { analyze } from "./analyzer";
 import { synthesize } from "./synthesizer";
 import { runRelevancePhase } from "./relevance";
 import { writeEpistemicGraph } from "./epistemic";
+import { resolveContradictions } from "./contradictions";
 import { config } from "./config";
 import { initLlmTelemetry, setLlmTelemetryPhase } from "./llm";
 import type { ResearchPlan } from "./schemas/plan";
@@ -246,6 +247,29 @@ async function main() {
     );
   }
 
+  // --- Phase 4.6: Contradiction resolver ---
+  // Candidate search is deterministic; LLM review only runs on likely
+  // conflict pairs. Results are written back into epistemic_graph.json and
+  // linked into each claim's counterevidence/dependencies.
+  const shouldResolveContradictions =
+    shouldRebuildEpistemic ||
+    process.argv.includes("--re-contradictions") ||
+    !JSON.parse(readFileSync(epistemicPath, "utf-8"))?.contradiction_pass;
+  if (!shouldResolveContradictions) {
+    console.log("[phase:contradictions] Using existing contradiction pass");
+  } else {
+    setLlmTelemetryPhase("contradictions");
+    console.log("[phase:contradictions] Resolving claim conflicts...");
+    const tc = Date.now();
+    const result = await resolveContradictions({
+      projectDir,
+      force: process.argv.includes("--re-contradictions") || shouldRebuildEpistemic,
+    });
+    console.log(
+      `[phase:contradictions] Done in ${((Date.now() - tc) / 1000).toFixed(1)}s — ${result.candidates} candidates, ${result.contradictions} contradictions\n`
+    );
+  }
+
   // --- Phase 5: Synthesizer ---
   setLlmTelemetryPhase("synth");
   console.log("[phase:synth] Generating final report...");
@@ -281,6 +305,8 @@ async function main() {
       setLlmTelemetryPhase("refine-analyze");
       await analyze(plan, projectDir);
       writeEpistemicGraph({ plan, projectDir });
+      setLlmTelemetryPhase("refine-contradictions");
+      await resolveContradictions({ projectDir, force: true });
       setLlmTelemetryPhase("refine-synth");
       await synthesize(plan, projectDir);
       console.log(
