@@ -16,6 +16,13 @@ import { readUrls } from "./reader";
 import { scoreSource, sortByTier } from "./sourcing";
 import { z } from "zod";
 
+interface ScoutContent {
+  content: string;
+  title: string;
+  url: string;
+  query: string;
+}
+
 export const ScoutDigestSchema = z.object({
   methods_in_literature: z
     .array(z.string())
@@ -118,7 +125,7 @@ export async function scout(topic: string): Promise<ScoutDigest | null> {
   console.log(`[scout] ${queries.length} survey queries: ${queries.map((q) => q.slice(0, 50)).join(" · ")}`);
 
   // Shallow harvest: one page per query, tier-sort, top 3 URLs each.
-  const allContents: string[] = [];
+  const allContents: ScoutContent[] = [];
   let totalFetched = 0;
   for (const query of queries) {
     const paged = await searchAll(query, 15).catch(() => [] as any[]);
@@ -130,9 +137,16 @@ export async function scout(topic: string): Promise<ScoutDigest | null> {
       3,
       15000
     );
-    for (const read of reads) {
+    for (let i = 0; i < reads.length; i++) {
+      const read = reads[i];
+      const source = top[i];
       if (read?.success && read.content.length > 200) {
-        allContents.push(read.content.slice(0, 12000));
+        allContents.push({
+          content: read.content,
+          title: read.title || source?.title || "",
+          url: read.url || source?.url || "",
+          query,
+        });
         totalFetched++;
       }
     }
@@ -143,17 +157,18 @@ export async function scout(topic: string): Promise<ScoutDigest | null> {
 
   // Distill into digest
   try {
-    const block = allContents
-      .slice(0, 8)
-      .map((c, i) => `<source index="${i + 1}">\n${c}\n</source>\n\n`)
-      .join("");
     let object: ScoutDigest;
     try {
+      const block = buildDigestBlock(topic, allContents, {
+        maxSources: positiveIntEnv("SCOUT_DIGEST_SOURCES", 5),
+        maxCharsPerSource: positiveIntEnv("SCOUT_DIGEST_CHARS_PER_SOURCE", 6000),
+        maxTotalChars: positiveIntEnv("SCOUT_DIGEST_MAX_CHARS", 26000),
+      });
       const res = await generateToolJson({
         schema: ScoutDigestSchema,
         system: SCOUT_DIGEST_SYSTEM,
         prompt: `Topic: ${topic}\n\nSources from broad survey queries:\n\n${block}\n\nReturn the structured digest.`,
-        maxRetries: 1,
+        maxRetries: 0,
         toolName: "create_scout_digest",
         toolDescription:
           "Distill scouted source excerpts into a structured research calibration digest.",
@@ -161,8 +176,28 @@ export async function scout(topic: string): Promise<ScoutDigest | null> {
       });
       object = res.object;
     } catch (err: any) {
-      console.warn(`[scout] function-call digest failed: ${err.message?.slice(0, 100)}`);
-      return null;
+      console.warn(`[scout] function-call digest failed: ${err.message?.slice(0, 100)} — retrying compact`);
+      try {
+        const compactBlock = buildDigestBlock(topic, allContents, {
+          maxSources: 3,
+          maxCharsPerSource: 3500,
+          maxTotalChars: 11000,
+        });
+        const res = await generateToolJson({
+          schema: ScoutDigestSchema,
+          system: SCOUT_DIGEST_SYSTEM,
+          prompt: `Topic: ${topic}\n\nSources from broad survey queries:\n\n${compactBlock}\n\nReturn the structured digest.`,
+          maxRetries: 0,
+          toolName: "create_scout_digest",
+          toolDescription:
+            "Distill scouted source excerpts into a compact structured research calibration digest.",
+          endpoint: config.endpoints.planner,
+        });
+        object = res.object;
+      } catch (retryErr: any) {
+        console.warn(`[scout] compact digest failed: ${retryErr.message?.slice(0, 100)}`);
+        return null;
+      }
     }
     console.log(
       `[scout] digest: ${object.methods_in_literature.length} methods, ${object.typical_numbers.length} numbers, ${object.open_questions.length} open questions`
@@ -172,4 +207,78 @@ export async function scout(topic: string): Promise<ScoutDigest | null> {
     console.warn(`[scout] digest failed: ${err.message?.slice(0, 80)}`);
     return null;
   }
+}
+
+function buildDigestBlock(
+  topic: string,
+  contents: ScoutContent[],
+  opts: { maxSources: number; maxCharsPerSource: number; maxTotalChars: number }
+): string {
+  let used = 0;
+  const topicTerms = topicTermSet(topic);
+  const selected = contents
+    .map((sample, index) => ({
+      ...sample,
+      content: cleanScoutContent(sample.content),
+      index,
+      score: scoutRelevanceScore(topicTerms, sample),
+    }))
+    .filter((item) => item.content.length >= 1200)
+    .filter((item) => item.score > 0 || contents.length <= opts.maxSources)
+    .sort((a, b) => b.score - a.score || b.content.length - a.content.length)
+    .slice(0, opts.maxSources);
+
+  const blocks: string[] = [];
+  for (const item of selected) {
+    const remaining = opts.maxTotalChars - used;
+    if (remaining <= 0) break;
+    const slice = item.content.slice(0, Math.min(opts.maxCharsPerSource, remaining));
+    if (slice.length < 500) continue;
+    used += slice.length;
+    blocks.push(
+      `<source index="${blocks.length + 1}" original_index="${item.index + 1}">\n` +
+        `Title: ${item.title}\nURL: ${item.url}\nQuery: ${item.query}\n\n${slice}\n</source>\n\n`
+    );
+  }
+  return blocks.join("");
+}
+
+function cleanScoutContent(content: string): string {
+  return content
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function positiveIntEnv(name: string, fallback: number): number {
+  const raw = Number(process.env[name] ?? "");
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+}
+
+function topicTermSet(topic: string): string[] {
+  const stop = new Set([
+    "between", "relationship", "effect", "effects", "impact", "using",
+    "with", "from", "into", "what", "does", "should", "this", "that",
+    "have", "been", "were", "will", "about", "products", "product",
+  ]);
+  return Array.from(
+    new Set(
+      topic
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((term) => term.length >= 4 && !stop.has(term))
+    )
+  );
+}
+
+function scoutRelevanceScore(terms: string[], sample: ScoutContent): number {
+  if (terms.length === 0) return Math.min(sample.content.length, 8000) / 1000;
+  const title = `${sample.title}\n${sample.query}`.toLowerCase();
+  const body = sample.content.slice(0, 12000).toLowerCase();
+  let score = 0;
+  for (const term of terms) {
+    if (title.includes(term)) score += 4;
+    if (body.includes(term)) score += 1;
+  }
+  return score + Math.min(sample.content.length, 10000) / 10000;
 }
