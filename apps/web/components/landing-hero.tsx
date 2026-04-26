@@ -558,79 +558,92 @@ export function LandingHero() {
         </section>
 
         {/* FAQ */}
-        <section className="py-20 md:py-28 border-t border-ink-600">
-          <div className="font-mono text-[11px] text-accent-primary tracking-[0.12em] uppercase mb-4">
-            FAQ
-          </div>
-          <h2
-            className="text-[32px] md:text-[44px] leading-[1.08] tracking-[-0.028em] font-medium max-w-[720px] mb-10"
-            style={{ fontFamily: "var(--font-sans)" }}
-          >
-            Questions{" "}
-            <em className="font-serif font-normal italic text-fg-dim">
-              smart teams
-            </em>{" "}
-            ask first.
-          </h2>
-
-          <div className="max-w-[760px]">
-            {FAQ.map((item, i) => (
-              <details
-                key={item.q}
-                open={i === 0}
-                className="border-b border-ink-600 py-5 md:py-6 group"
+        <section className="border-t border-ink-600 py-20 md:py-28">
+          <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(260px,0.72fr)_minmax(0,1fr)] lg:items-start">
+            <div className="min-w-0 lg:sticky lg:top-8">
+              <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-primary">
+                FAQ
+              </div>
+              <h2
+                className="max-w-[560px] text-[30px] font-medium leading-[1.08] tracking-[-0.018em] md:text-[42px]"
+                style={{ fontFamily: "var(--font-sans)" }}
               >
-                <summary className="cursor-pointer list-none flex justify-between items-center text-[15.5px] md:text-[17px] font-medium text-fg tracking-[-0.01em]">
-                  {item.q}
-                  <span className="text-fg-muted text-[22px] font-light transition group-open:hidden">
-                    +
-                  </span>
-                  <span className="text-fg-muted text-[22px] font-light transition hidden group-open:inline">
-                    −
-                  </span>
-                </summary>
-                <div className="text-fg-dim text-[14px] md:text-[14.5px] leading-[1.65] pt-3 max-w-[680px]">
-                  {item.a}
-                </div>
-              </details>
-            ))}
+                Before you trust a research answer, ask these.
+              </h2>
+              <p className="mt-4 max-w-[460px] text-[14.5px] leading-[1.65] text-fg-dim">
+                Syncera is built for people who need to defend a conclusion,
+                not just read a confident paragraph.
+              </p>
+            </div>
+
+            <div className="min-w-0">
+              {FAQ.map((item, i) => (
+                <details
+                  key={item.q}
+                  open={i === 0}
+                  className="group border-b border-ink-600 py-5 first:border-t md:py-6"
+                >
+                  <summary className="flex min-w-0 cursor-pointer list-none items-start justify-between gap-4 text-[15.5px] font-medium tracking-[-0.01em] text-fg md:text-[17px]">
+                    <span className="min-w-0">{item.q}</span>
+                    <span className="shrink-0 text-[22px] font-light leading-none text-fg-muted transition group-open:hidden">
+                      +
+                    </span>
+                    <span className="hidden shrink-0 text-[22px] font-light leading-none text-fg-muted transition group-open:inline">
+                      −
+                    </span>
+                  </summary>
+                  <div className="max-w-[720px] pt-3 text-[14px] leading-[1.65] text-fg-dim md:text-[14.5px]">
+                    {item.a}
+                  </div>
+                </details>
+              ))}
+            </div>
           </div>
         </section>
 
         {/* FINAL CTA */}
-        <section className="pb-12 md:pb-16 pt-8 md:pt-12">
+        <section className="pb-12 pt-8 md:pb-16 md:pt-12">
           <div
-            className="rounded-[18px] border border-ink-600 px-6 md:px-12 py-14 md:py-20 text-center"
+            className="overflow-hidden rounded-[14px] border border-ink-600 px-5 py-10 md:px-10 md:py-14"
             style={{
               background:
                 "radial-gradient(circle at 30% 30%, rgba(232,165,132,0.10), transparent 60%), var(--ink-800)",
             }}
           >
-            <h2
-              className="rl-hero-title max-w-[760px] mx-auto"
-              style={{ fontSize: "clamp(32px, 4.8vw, 54px)" }}
-            >
-              Stop citing <em>what the model said.</em>
-              <br />
-              Start citing <span className="acc">what the paper said.</span>
-            </h2>
-            <p className="text-[15px] md:text-[17px] text-fg-dim max-w-[560px] mx-auto mb-8 mt-4">
-              Sign up takes 20 seconds. First run finishes in 30–60 minutes
-              with a PDF, REPORT.md, and a full JSON audit trail.
-            </p>
-            <div className="flex justify-center gap-3 flex-wrap">
-              <Link
-                href="/signup"
-                className="px-[22px] py-[13px] rounded-[9px] bg-accent-primary text-ink-900 text-[14.5px] font-semibold inline-flex items-center gap-2 hover:brightness-110 transition"
-              >
-                Create an account
-              </Link>
-              <Link
-                href="/login"
-                className="px-[18px] py-[13px] rounded-[9px] bg-transparent text-fg border border-ink-500 text-[14.5px] font-medium inline-flex items-center gap-2 hover:border-fg-muted hover:bg-ink-800 transition"
-              >
-                Sign in
-              </Link>
+            <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-end">
+              <div className="min-w-0">
+                <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-primary">
+                  Start with one question
+                </div>
+                <h2
+                  className="max-w-[820px] text-[32px] font-medium leading-[1.04] tracking-[-0.02em] md:text-[52px]"
+                  style={{ fontFamily: "var(--font-sans)" }}
+                >
+                  Turn a messy topic into a report you can audit line by line.
+                </h2>
+                <p className="mt-4 max-w-[650px] text-[15px] leading-[1.7] text-fg-dim md:text-[17px]">
+                  A run produces REPORT.md, PDF, verified facts, rejected
+                  claims, source trust status, research debt, and a JSON audit
+                  trail you can replay or branch.
+                </p>
+              </div>
+              <div className="min-w-0 space-y-3">
+                <Link
+                  href="/signup"
+                  className="inline-flex h-11 w-full items-center justify-center rounded-[9px] bg-accent-primary px-5 text-[14.5px] font-semibold text-ink-900 transition hover:brightness-110"
+                >
+                  Start a research run
+                </Link>
+                <Link
+                  href="/login"
+                  className="inline-flex h-11 w-full items-center justify-center rounded-[9px] border border-ink-500 bg-transparent px-5 text-[14.5px] font-medium text-fg transition hover:border-fg-muted hover:bg-ink-800"
+                >
+                  Sign in
+                </Link>
+                <div className="text-[11.5px] leading-relaxed text-fg-muted">
+                  No credit card during beta. Self-hostable, OpenAPI-ready, MIT.
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -991,53 +1004,56 @@ const SPECS = [
 
 const FAQ = [
   {
-    q: "How is this different from Perplexity / Elicit / You.com?",
+    q: "How is this different from Perplexity, Elicit, or You.com?",
     a: (
       <>
-        Those are query-in, answer-out. Syncera is query-in,{" "}
-        <em className="italic">traceable DAG</em>-out. Every phase&apos;s input,
-        output, and prompt lands on disk and can be replayed. Rerun scout,
-        swap the planner prompt, diff the facts.
+        Those products are optimized for fast answers. Syncera is optimized
+        for accountable research: question plan, source harvest, exact-quote
+        facts, verifier verdicts, claim lifecycle, source trust, research
+        debt, and report artifacts are all kept separately so a team can audit
+        where a conclusion came from.
       </>
     ),
   },
   {
-    q: "What stops the verifier from rubber-stamping everything?",
+    q: "What stops it from rubber-stamping weak evidence?",
     a: (
       <>
-        L1 is deterministic (HEAD request). L2 is deterministic (substring of
-        the exact quote in scraped text). Only L3 is an LLM and its system
-        prompt is adversarial — it&apos;s told to find misreads, overreach,
-        and cherry-picks. In practice it rejects around 28% of facts the
-        extractor emits.
+        Verification has deterministic checks before the adversarial LLM pass:
+        URL liveness, quote-keyword matching against scraped content, and
+        attribution checks that make sure the cited URL actually discusses the
+        fact&apos;s named entity. Manually ignored sources are excluded, and
+        questionable sources lower confidence and create research debt.
       </>
     ),
   },
   {
-    q: "Can I integrate with my own app?",
+    q: "Can we use it inside our own workflow?",
     a: (
       <>
-        Yes. Full OpenAPI 3.1 spec at{" "}
+        Yes. The web app is backed by an OpenAPI 3.1 surface at{" "}
         <a href="/api/openapi.json" className="text-accent-primary underline">
           /api/openapi.json
         </a>
-        . Mint an API key in Settings, POST /api/runs/start, and
-        webhook-subscribe to <code className="font-mono">run.completed</code>{" "}
-        — you&apos;ll get a signed payload with links to REPORT.md, facts,
-        and PDF artifacts.
+        . You can start runs, stream logs, read facts, fetch reports, export
+        audit JSON, and receive signed webhooks when a run completes.
       </>
     ),
   },
   {
-    q: "Confidential / internal sources?",
-    a: "Self-hostable. The pipeline runs in Docker, the LLM endpoint is configurable (OpenAI-compatible), SearXNG can be swapped for any retriever you point at it. Nothing leaves your box if you don't want it to.",
+    q: "Can it work with internal or confidential sources?",
+    a: "Yes. Syncera is filesystem-first and self-hostable. You can bring your own URLs, keep artifacts on your own machine, and point the LLM layer at Qwen, Gemini, or another compatible endpoint. The hosted beta is for convenience; the architecture is not locked to hosted search or hosted models.",
   },
   {
     q: "Which LLMs does it use?",
-    a: "The public deployment runs qwen3.6-35b-a3b on a flat-fee Runpod. Any OpenAI-compatible endpoint works — point GEMMA_BASE_URL at Anthropic, OpenAI, a local vLLM, whatever.",
+    a: "The local/default profile is Qwen on an OpenAI-compatible endpoint. Gemini is supported as a separate provider, including higher parallelism and search grounding where available. The pipeline keeps provider choice explicit because deep research depends on cost, context, parallelism, and retrieval behavior.",
+  },
+  {
+    q: "What do we get after one run?",
+    a: "A report is only the top layer. You also get verified facts, rejected facts, source list, evidence quotes, claim lifecycle, contradiction map, research debt, source trust overrides, cognitive score, PDF, REPORT.md, and audit JSON.",
   },
   {
     q: "Pricing?",
-    a: "Free during beta. Long-term plan: self-host is free forever (MIT), hosted plan is flat monthly once the deployment pays for the GPU. No per-token surprises either way.",
+    a: "Free during beta. The repo is MIT for self-hosting. Hosted pricing will be simple and usage-aware because serious research can touch hundreds of sources and many LLM calls; the product shows token and cost telemetry so teams can see what a run consumed.",
   },
 ];
