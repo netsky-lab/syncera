@@ -23,6 +23,22 @@ DO NOT:
   - Fabricate numeric thresholds ("≥50% reduction", "≤1.5% perplexity") — those are EVIDENCE outputs, not plan inputs.
   - Frame questions as falsifiable assertions ("TurboQuant achieves X"). Questions should be OPEN: "How much memory does TurboQuant save?".
   - Require empirical validation (running benchmarks). This pipeline answers from LITERATURE only; validation infrastructure is out of scope.
+  - Treat a target product named in the topic as if its private roadmap, customer deployments, benchmark scores, or internal docs are already public evidence.
+
+## Product-under-evaluation topics
+
+When the topic asks how to improve, evaluate, position, launch, or deploy a product (for example "Syncera before deployment"), the product is the DESIGN TARGET, not an already-proven external source.
+
+DO:
+  - Ask what the product SHOULD implement, expose, measure, or prove based on external evidence.
+  - Compare against published competitor docs, peer-reviewed methods, public benchmarks, standards, pricing pages, and credible practitioner reports.
+  - Frame missing proof as an evidence gap: "What evidence would be needed to validate Syncera's cognitive score?".
+  - Search for general trust, attribution, collaboration, evaluation, and reliability literature when the target product has no public docs.
+
+DO NOT:
+  - Ask "What benchmark scores has Syncera achieved?", "What customer deployments prove Syncera?", or "How does Syncera implement X?" unless the topic/constraints explicitly supplied public Syncera docs or benchmark reports.
+  - Create quoted search targets for non-public product features such as "Syncera trust workflow documentation" when the task is product design rather than vendor due diligence.
+  - Convert desired positioning claims ("cognitive superiority") into factual claims that the literature is expected to confirm.
 
 ## Shape of a good question
 
@@ -131,6 +147,7 @@ export async function makePlan(input: PlannerInput): Promise<ResearchPlan> {
     input.constraints ? `Additional constraints: ${input.constraints}` : "",
     scoutingBlock,
     "Produce the research plan. Use 5-15 research questions: never fewer than 5; use 10-15 when the topic has many methods, benchmarks, deployment paths, or unresolved trade-offs.",
+    "If the topic is a product evaluation or deploy-readiness audit, treat the named product as the target being designed/audited. Ask what it should prove or implement; do not assume public benchmark scores, customer deployments, or implementation details exist unless provided in the topic or constraints.",
     "IDs must be explicit strings: questions Q1, Q2, ... and subquestions Q1.1, Q1.2, ...",
     "Subquestion angle must be exactly one of: benchmark, methodology, comparison, case_study, feasibility, trade_off.",
     "Question category must be exactly one of: factual, comparative, trade_off, feasibility, deployment, mechanism.",

@@ -55,6 +55,8 @@ Phrasing should match official docs, regulatory pages, technical notes, product 
 - For 'web' queries: DO use imperatives and vendor names when relevant.
 - No duplicate angles. Each query must cover a distinct research sub-question.
 - If you know a canonical paper, method, standard, guideline, ingredient, molecule, dataset, or framework by name, use that name in at least one query.
+- Stay anchored to the current goal. Do not introduce a named entity from prior learnings unless it directly answers the current goal.
+- For product-under-evaluation topics, treat the named product as the design target. Search for competitor docs, public methods, evaluation frameworks, trust literature, and pricing/collaboration patterns; do not search as if the target product already has public benchmark reports, customer deployments, or internal implementation docs unless the topic explicitly says so.
 
 ## Anti-patterns
 
@@ -92,6 +94,7 @@ Examples of BAD learnings (REJECT, skip):
 - Prefer specific numbers over ranges.  "4.7x reduction" > "significant reduction".
 - Do NOT use the words: "significant", "substantial", "effective", "impressive", "important" (unless quoting).
 - Do NOT invent facts. If source doesn't say it, don't write it.
+- If a source is off-topic for the Query and Goal, extract no learnings from it.
 - NEGATIVE findings matter: if a source reports a failure, adverse result, limitation, null result, or boundary condition, extract it — these are high-value contradictions later.
 - Preserve exact method/metric/entity names as written in source.
 
@@ -109,6 +112,8 @@ Also extract BACKGROUND mentions even without numbers when they anchor the resea
 Generate 3 follow-up questions that dig DEEPER, not broader:
   ✓ "What is the measured delta for named method A on benchmark/population/setup B vs C?"  — specific, deepens
   ✗ "What are other methods?"                                                           — broader, shallow
+
+Follow-ups must preserve the Query/Goal domain. Do not pivot to unrelated products, papers, systems, industries, or acronyms just because they appeared in a scraped page. For product-under-evaluation topics, follow-ups should ask what evidence, UX, method, metric, competitor pattern, or trust mechanism should inform the target product; they should not imply the target product already has public proof.
 
 Output JSON only.`;
 
@@ -690,7 +695,7 @@ async function generateQueries(args: {
 
   const webCount = Math.ceil(numQueries * 0.6);
   const academicCount = numQueries - webCount;
-  const prompt = `Research topic: ${topic}\nCurrent goal: ${taskGoal.slice(0, 500)}${domainSection}${profileSection}${priorSection}\n\nGenerate EXACTLY ${numQueries} diverse queries: ${webCount} with channel="web" and ${academicCount} with channel="academic". Return ONLY JSON.`;
+  const prompt = `Research topic: ${topic}\nCurrent goal: ${taskGoal.slice(0, 500)}${domainSection}${profileSection}${priorSection}\n\nIf this is a product evaluation/deploy-readiness task, do not assume the named target product has public benchmark scores, customer deployments, or implementation docs. Generate queries that find external evidence the product should learn from.\n\nGenerate EXACTLY ${numQueries} diverse queries: ${webCount} with channel="web" and ${academicCount} with channel="academic". Return ONLY JSON.`;
 
   const { object } = await generateJson({
     schema: SerpQueriesSchema,
