@@ -72,7 +72,7 @@ Crucially: facts are NOT tagged as supports/contradicts. This pipeline is QUESTI
 
 ## Output requirements
 
-1. COVERAGE: Extract 15-25 facts per subquestion — one fact per DISTINCT piece of information. Do NOT merge different methods/results into a single fact.
+1. COVERAGE: Across a full subquestion, target 15-25 facts — one fact per DISTINCT piece of information. If the caller provides a small learning batch, extract only the facts supported by that batch; do NOT pad to 15-25.
 2. DIVERSITY: If learnings mention distinct named methods, compounds, ingredients, standards, datasets, models, benchmarks, populations, materials, or interventions, create a SEPARATE fact for EACH where the learnings support it.
 3. NUMERIC PRIORITY: Every fact SHOULD contain a specific number, model name, benchmark name, or dataset name. If a learning has no specifics, rank its confidence <=0.5 and skip unless it's a named-entity anchor (background category).
 4. SOURCE ATTRIBUTION:
@@ -203,6 +203,19 @@ function findBestSourceForLearning(
   return sources[0] ?? null;
 }
 
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function positiveIntEnv(name: string, fallback: number): number {
+  const raw = Number(process.env[name] ?? "");
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+}
+
 export async function extractEvidence(
   plan: ResearchPlan,
   projectDir: string
@@ -296,7 +309,9 @@ export async function extractEvidence(
     });
 
     const sortedResults = orderedResults;
-    const sourceCatalog = sortedResults
+    const maxCatalogSources = positiveIntEnv("EVIDENCE_CATALOG_SOURCES", 24);
+    const catalogResults = sortedResults.slice(0, maxCatalogSources);
+    const sourceCatalog = catalogResults
       .map(
         (r, i) => {
           const tier = tierLabel(scoreSource(r.url));
@@ -326,9 +341,8 @@ export async function extractEvidence(
       );
     }
 
-    const learningsBlock = learnings
-      .map((l, i) => `L${i + 1}. ${l}`)
-      .join("\n");
+    const learningBatchSize = positiveIntEnv("EVIDENCE_LEARNINGS_PER_BATCH", 5);
+    const learningBatches = chunk(learnings, learningBatchSize);
 
     const methodPoolBlock =
       methodPool.length > 0
@@ -345,15 +359,22 @@ export async function extractEvidence(
       ? `Research question ${question.id} [${question.category}]: ${question.question}\nSubquestion ${subquestion?.id ?? sourceIndex.subquestion_id} [${subquestion?.angle ?? ""}]: ${subquestion?.text ?? ""}`
       : `Subquestion ${sourceIndex.subquestion_id}`;
 
-    const prompt = `${questionContext}
+    const unitFacts: Fact[] = [];
+    for (let batchIndex = 0; batchIndex < learningBatches.length; batchIndex++) {
+      const batchLearnings = learningBatches[batchIndex]!;
+      const learningsBlock = batchLearnings
+        .map((l, i) => `L${batchIndex * learningBatchSize + i + 1}. ${l}`)
+        .join("\n");
+
+      const prompt = `${questionContext}
 ${methodPoolBlock}
-LEARNINGS extracted by harvester from full scraped content (${learnings.length}):
+LEARNING BATCH ${batchIndex + 1}/${learningBatches.length} from full scraped content (${batchLearnings.length} of ${learnings.length}):
 ${learningsBlock}
 
-SOURCES consulted (${sortedResults.length} active URLs, ${skippedBySourceTrust} ignored):
+SOURCES consulted (${sortedResults.length} active URLs, ${skippedBySourceTrust} ignored; showing top ${catalogResults.length}):
 ${sourceCatalog}
 
-For each learning, produce a fact:
+For each learning in this batch, produce 1-2 facts only if the source catalog can plausibly support them:
 - statement: the learning text (may be lightly rephrased but keep all numbers/names)
 - factuality: quantitative | qualitative | comparative | background
 - confidence: 0.0-1.0
@@ -363,41 +384,56 @@ For each learning, produce a fact:
 
 Output JSON only (fact IDs will be assigned after all subquestions finish).`;
 
-    console.log(
-      `[evidence] ${sourceIndex.subquestion_id}: ${learnings.length} learnings, ${sourceIndex.results.length} sources (${Object.entries(tierCounts)
-        .map(([t, n]) => `${t}:${n}`)
-        .join(" ")}) → ${sourceIndex.question_id}`
-    );
+      console.log(
+        `[evidence] ${sourceIndex.subquestion_id}: batch ${batchIndex + 1}/${learningBatches.length}, ${batchLearnings.length} learnings, ${sourceIndex.results.length} sources (${Object.entries(tierCounts)
+          .map(([t, n]) => `${t}:${n}`)
+          .join(" ")}) → ${sourceIndex.question_id}`
+      );
 
-    try {
-      const { object } = await generateJson({
-        schema: FactExtractionSchema,
-        system: evidenceSystem,
-        prompt,
-        temperature: 0.2,
-        endpoint: config.endpoints.evidence,
-      });
+      try {
+        const { object } = await generateJson({
+          schema: FactExtractionSchema,
+          system: evidenceSystem,
+          prompt,
+          temperature: 0.2,
+          maxTokens: positiveIntEnv("EVIDENCE_MAX_TOKENS", 4096),
+          endpoint: config.endpoints.evidence,
+        });
 
-      const unitFacts: Fact[] = [];
-      for (const fact of object.facts) {
-        fact.question_id = sourceIndex.question_id;
-        fact.subquestion_id = sourceIndex.subquestion_id;
+        for (const fact of object.facts) {
+          fact.question_id = sourceIndex.question_id;
+          fact.subquestion_id = sourceIndex.subquestion_id;
 
-        const validRefs = [];
-        for (const ref of fact.references ?? []) {
-          const matchingSrc = activeSources.find(
-            (s) =>
-              s.url === ref.url ||
-              ref.url?.includes(s.url) ||
-              s.url?.includes(ref.url)
-          );
-          if (matchingSrc) {
-            validRefs.push({
-              url: matchingSrc.url,
-              title: matchingSrc.title,
-              exact_quote: ref.exact_quote ?? fact.statement,
-            });
-          } else {
+          const validRefs = [];
+          for (const ref of fact.references ?? []) {
+            const matchingSrc = activeSources.find(
+              (s) =>
+                s.url === ref.url ||
+                ref.url?.includes(s.url) ||
+                s.url?.includes(ref.url)
+            );
+            if (matchingSrc) {
+              validRefs.push({
+                url: matchingSrc.url,
+                title: matchingSrc.title,
+                exact_quote: ref.exact_quote ?? fact.statement,
+              });
+            } else {
+              const best = findBestSourceForLearning(
+                fact.statement,
+                activeSources,
+                contentDir
+              );
+              if (best) {
+                validRefs.push({
+                  url: best.url,
+                  title: best.title,
+                  exact_quote: fact.statement,
+                });
+              }
+            }
+          }
+          if (validRefs.length === 0) {
             const best = findBestSourceForLearning(
               fact.statement,
               activeSources,
@@ -411,69 +447,59 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
               });
             }
           }
-        }
-        if (validRefs.length === 0) {
-          const best = findBestSourceForLearning(
-            fact.statement,
-            activeSources,
-            contentDir
-          );
-          if (best) {
-            validRefs.push({
-              url: best.url,
-              title: best.title,
-              exact_quote: fact.statement,
-            });
-          }
-        }
-        fact.references = validRefs;
 
-        // Attribution check — if the fact names a specific entity, require
-        // that entity to appear in the cited source's scraped content. If
-        // not, search other sources in this subquestion for a match; swap
-        // URL if found, downgrade confidence otherwise. Cheaper than running
-        // the L3 verifier on every fact.
-        const entity = extractPrimaryEntity(fact.statement);
-        if (entity && fact.references[0]) {
-          const primary = fact.references[0];
-          const primaryContent = loadFullContent(primary.url, contentDir);
-          const primaryHasEntity =
-            primaryContent && contentContainsEntity(primaryContent, entity);
-          if (!primaryHasEntity) {
-            const better = activeSources.find((s) => {
-              if (s.url === primary.url) return false;
-              const c = loadFullContent(s.url, contentDir);
-              return c ? contentContainsEntity(c, entity) : false;
-            });
-            if (better) {
-              fact.references[0] = {
-                url: better.url,
-                title: better.title,
-                exact_quote: fact.statement,
-              };
-              attributionRepaired++;
-            } else {
-              fact.confidence = Math.min(fact.confidence ?? 0.5, 0.3);
-              attributionUnresolved++;
+          fact.references = validRefs;
+
+          // Attribution check — if the fact names a specific entity, require
+          // that entity to appear in the cited source's scraped content. If
+          // not, search other sources in this subquestion for a match; swap
+          // URL if found, downgrade confidence otherwise. Cheaper than running
+          // the L3 verifier on every fact.
+          const entity = extractPrimaryEntity(fact.statement);
+          if (entity && fact.references[0]) {
+            const primary = fact.references[0];
+            const primaryContent = loadFullContent(primary.url, contentDir);
+            const primaryHasEntity =
+              primaryContent && contentContainsEntity(primaryContent, entity);
+            if (!primaryHasEntity) {
+              const better = activeSources.find((s) => {
+                if (s.url === primary.url) return false;
+                const c = loadFullContent(s.url, contentDir);
+                return c ? contentContainsEntity(c, entity) : false;
+              });
+              if (better) {
+                fact.references[0] = {
+                  url: better.url,
+                  title: better.title,
+                  exact_quote: fact.statement,
+                };
+                attributionRepaired++;
+              } else {
+                fact.confidence = Math.min(fact.confidence ?? 0.5, 0.3);
+                attributionUnresolved++;
+              }
             }
           }
+
+          const trust = sourceTrustForUrl(sourceStatus, fact.references[0]?.url);
+          fact.confidence = adjustedConfidenceForTrust(fact.confidence, trust);
+
+          unitFacts.push(fact);
         }
-
-        const trust = sourceTrustForUrl(sourceStatus, fact.references[0]?.url);
-        fact.confidence = adjustedConfidenceForTrust(fact.confidence, trust);
-
-        unitFacts.push(fact);
+        console.log(
+          `[evidence]   ${sourceIndex.subquestion_id}: batch ${batchIndex + 1}/${learningBatches.length} +${object.facts.length} facts`
+        );
+      } catch (err: any) {
+        console.warn(
+          `[evidence]   ${sourceIndex.subquestion_id} batch ${batchIndex + 1}/${learningBatches.length} failed: ${err.message?.slice(0, 100)}`
+        );
       }
-
-      unitResults.push({ subquestionId: sourceIndex.subquestion_id, facts: unitFacts });
-      console.log(
-        `[evidence]   ${sourceIndex.subquestion_id}: +${unitFacts.length} facts`
-      );
-    } catch (err: any) {
-      console.warn(
-        `[evidence]   ${sourceIndex.subquestion_id} failed: ${err.message?.slice(0, 100)}`
-      );
     }
+
+    unitResults.push({ subquestionId: sourceIndex.subquestion_id, facts: unitFacts });
+    console.log(
+      `[evidence]   ${sourceIndex.subquestion_id}: +${unitFacts.length} facts`
+    );
   }
 
   const queue = [...sourceFiles];
