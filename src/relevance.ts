@@ -21,6 +21,7 @@ import type { ResearchPlan } from "./schemas/plan";
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { z } from "zod";
+import { scoreSource } from "./sourcing";
 
 const RELEVANCE_SYSTEM = `You are a domain-relevance gate for a research pipeline.
 
@@ -193,6 +194,20 @@ function hashUrl(url: string): string {
   );
 }
 
+function normalizeUrlKey(url: string): string {
+  return url.toLowerCase().replace(/\/+$/, "").replace(/^https?:\/\/(www\.)?/, "");
+}
+
+function sourceUrlFromLearning(learning: string): string | null {
+  const m = learning.match(/^\s*SOURCE\s+\d+\s+(https?:\/\/\S+)\s*\|/i);
+  return m?.[1]?.trim() ?? null;
+}
+
+function positiveIntEnv(name: string, fallback: number): number {
+  const raw = Number(process.env[name] ?? "");
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+}
+
 function loadContent(url: string, contentDir: string): string | null {
   const p = join(contentDir, `${hashUrl(url)}.md`);
   if (!existsSync(p)) return null;
@@ -251,6 +266,56 @@ export async function runRelevancePhase(
   for (const file of sourceFiles) {
     const path = join(sourcesDir, file);
     const index: SourceIndex = JSON.parse(readFileSync(path, "utf-8"));
+    const learnings: string[] = (index as any).learnings ?? [];
+
+    if (learnings.length === 0) {
+      for (const r of index.results) {
+        r.relevance = {
+          domain_match: "off",
+          usefulness: 0,
+          source_type: "other",
+          notes: "Skipped relevance check: this subquestion has no extracted learnings.",
+          checked_at: Date.now(),
+        };
+        totalChecked++;
+        rejected++;
+      }
+      if (index.results.length > 0) weakSubquestions.push(index.subquestion_id);
+      writeFileSync(path, JSON.stringify(index, null, 2));
+      console.log(
+        `[relevance] ${index.subquestion_id}: skipped ${index.results.length} sources (no learnings)`
+      );
+      continue;
+    }
+
+    const maxCandidates = positiveIntEnv("RELEVANCE_MAX_SOURCES_PER_SUBQUESTION", 12);
+    const linkedUrlKeys = new Set(
+      learnings.map(sourceUrlFromLearning).filter(Boolean).map((u) => normalizeUrlKey(u!))
+    );
+    const candidateIndexes = new Set<number>();
+    for (let i = 0; i < index.results.length; i++) {
+      const key = normalizeUrlKey(index.results[i]!.url);
+      if (linkedUrlKeys.has(key)) candidateIndexes.add(i);
+    }
+    const rankedIndexes = index.results
+      .map((r, i) => ({ i, tier: scoreSource(r.url) }))
+      .sort((a, b) => a.tier - b.tier)
+      .map((x) => x.i);
+    for (const i of rankedIndexes) {
+      if (candidateIndexes.size >= maxCandidates) break;
+      candidateIndexes.add(i);
+    }
+
+    for (let i = 0; i < index.results.length; i++) {
+      if (candidateIndexes.has(i)) continue;
+      index.results[i]!.relevance = {
+        domain_match: "off",
+        usefulness: 0,
+        source_type: "other",
+        notes: "Skipped relevance check: source was not cited by extracted learnings or top-ranked for this subquestion.",
+        checked_at: Date.now(),
+      };
+    }
 
     // Build question context: the specific subquestion + its parent question.
     const question = plan.questions.find((q) => q.id === index.question_id);
@@ -264,7 +329,7 @@ export async function runRelevancePhase(
     // Assess each source that doesn't yet have a relevance verdict, or all if force.
     const targets = index.results
       .map((r, i) => ({ r, i }))
-      .filter(({ r }) => force || !r.relevance);
+      .filter(({ r, i }) => candidateIndexes.has(i) && (force || !r.relevance));
 
     if (targets.length === 0) {
       console.log(`[relevance] ${index.subquestion_id}: cached, skipping`);
@@ -278,7 +343,7 @@ export async function runRelevancePhase(
     }
 
     console.log(
-      `[relevance] ${index.subquestion_id}: assessing ${targets.length}/${index.results.length} sources`
+      `[relevance] ${index.subquestion_id}: assessing ${targets.length}/${index.results.length} sources (${learnings.length} learnings, ${candidateIndexes.size} candidates)`
     );
 
     const verdicts = await parallelLimit(targets, concurrency, async ({ r }) => {
