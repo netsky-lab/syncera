@@ -8,6 +8,8 @@ export type DomainProfileId =
 export interface DomainProfile {
   id: DomainProfileId;
   label: string;
+  plannerGuidance: string[];
+  academicSiteFilters: string[];
   queryExamples: string[];
   namedEntities: string[];
   metrics: string[];
@@ -20,6 +22,17 @@ const PROFILES: Record<DomainProfileId, DomainProfile> = {
   generic: {
     id: "generic",
     label: "general research",
+    plannerGuidance: [
+      "Use 5-7 focused questions for a narrow applied topic; only expand toward 10-15 for broad surveys.",
+      "Keep questions tied to decisions the reader can make after reading the report.",
+    ],
+    academicSiteFilters: [
+      "site:scholar.google.com",
+      "site:researchgate.net",
+      "site:semanticscholar.org",
+      "site:openalex.org",
+      "site:ncbi.nlm.nih.gov",
+    ],
     queryExamples: [
       '"<specific method/entity> <metric/outcome> systematic review"',
       '"<official source or standard> <topic-specific term> guidance"',
@@ -60,6 +73,18 @@ const PROFILES: Record<DomainProfileId, DomainProfile> = {
   llm_infra: {
     id: "llm_infra",
     label: "LLM infrastructure / ML systems",
+    plannerGuidance: [
+      "Structure around capacity, accuracy, throughput, backend support, failure modes, and deployment path.",
+      "Do not ask implementation-coding questions unless the topic explicitly asks for engineering steps.",
+    ],
+    academicSiteFilters: [
+      "site:arxiv.org",
+      "site:openreview.net",
+      "site:aclanthology.org",
+      "site:papers.nips.cc",
+      "site:proceedings.mlr.press",
+      "site:dl.acm.org",
+    ],
     queryExamples: [
       '"KIVI: Tuning-free asymmetric 2-bit quantization for KV cache"',
       '"vLLM KV cache quantization FP8 benchmark"',
@@ -106,6 +131,22 @@ const PROFILES: Record<DomainProfileId, DomainProfile> = {
   chemistry_cosmetics: {
     id: "chemistry_cosmetics",
     label: "chemistry / cosmetics R&D",
+    plannerGuidance: [
+      "Use 5 tightly scoped R&D questions for narrow formulation topics: dose/application, skin concentration, repeated application, vehicle/formulation variables, and measurement/validation methods.",
+      "Prefer practical formulation and assay questions over numerical-method questions unless the user explicitly asks for FDM, Crank-Nicolson, COMSOL, or simulation schemes.",
+      "Do not split hydrophilic vs lipophilic, in vivo vs ex vivo, or layer thickness vs concentration into separate top-level questions unless the topic is broad enough; make them subquestions.",
+    ],
+    academicSiteFilters: [
+      "site:ncbi.nlm.nih.gov",
+      "site:pmc.ncbi.nlm.nih.gov",
+      "site:pubmed.ncbi.nlm.nih.gov",
+      "site:sciencedirect.com",
+      "site:tandfonline.com",
+      "site:wiley.com",
+      "site:springer.com",
+      "site:mdpi.com",
+      "site:karger.com",
+    ],
     queryExamples: [
       '"Ethylhexyl Methoxycinnamate photostability sunscreen formulation"',
       '"Diethylamino Hydroxybenzoyl Hexyl Benzoate UVA photostabilizer study"',
@@ -151,6 +192,20 @@ const PROFILES: Record<DomainProfileId, DomainProfile> = {
   battery_materials: {
     id: "battery_materials",
     label: "battery / materials R&D",
+    plannerGuidance: [
+      "Structure around degradation mechanism, operating condition, measurement protocol, comparative chemistry, and deployment trade-off.",
+      "Keep cell chemistry, temperature, SOC/DoD, C-rate, and duration attached to questions.",
+    ],
+    academicSiteFilters: [
+      "site:sciencedirect.com",
+      "site:nature.com",
+      "site:acs.org",
+      "site:wiley.com",
+      "site:springer.com",
+      "site:mdpi.com",
+      "site:osti.gov",
+      "site:nrel.gov",
+    ],
     queryExamples: [
       '"lithium-ion calendar aging 80% state of charge temperature Arrhenius"',
       '"solid electrolyte interphase capacity fade storage state of charge"',
@@ -196,6 +251,19 @@ const PROFILES: Record<DomainProfileId, DomainProfile> = {
   biomedical_clinical: {
     id: "biomedical_clinical",
     label: "biomedical / clinical research",
+    plannerGuidance: [
+      "Structure around population, intervention/exposure, comparator, outcome, safety, and guideline/regulatory status.",
+      "Separate clinical evidence from preclinical mechanism evidence.",
+    ],
+    academicSiteFilters: [
+      "site:pubmed.ncbi.nlm.nih.gov",
+      "site:pmc.ncbi.nlm.nih.gov",
+      "site:clinicaltrials.gov",
+      "site:cochranelibrary.com",
+      "site:who.int",
+      "site:fda.gov",
+      "site:ema.europa.eu",
+    ],
     queryExamples: [
       '"<intervention> randomized controlled trial <population> outcome"',
       '"<compound> safety assessment regulatory opinion"',
@@ -290,6 +358,9 @@ export function domainPromptBlock(profile: DomainProfile): string {
     "High-signal query patterns:",
     ...profile.queryExamples.map((x) => `- ${x}`),
     "",
+    "Planning guidance:",
+    ...profile.plannerGuidance.map((x) => `- ${x}`),
+    "",
     "Named entities worth preserving:",
     ...profile.namedEntities.map((x) => `- ${x}`),
     "",
@@ -299,6 +370,17 @@ export function domainPromptBlock(profile: DomainProfile): string {
     "Preferred sources:",
     ...profile.sourcePreferences.map((x) => `- ${x}`),
   ].join("\n");
+}
+
+export function plannerGuidanceBlock(profile: DomainProfile): string {
+  return [
+    `## Domain planning profile: ${profile.label}`,
+    ...profile.plannerGuidance.map((x) => `- ${x}`),
+  ].join("\n");
+}
+
+export function academicSiteFilter(profile: DomainProfile): string {
+  return profile.academicSiteFilters.join(" OR ");
 }
 
 export function learningGuidanceBlock(profile: DomainProfile): string {

@@ -5,6 +5,7 @@ import { readUrls } from "./reader";
 import { SerpQueriesSchema, LearningsSchema } from "./schemas/learning";
 import { scoreSource } from "./sourcing";
 import {
+  academicSiteFilter,
   detectDomainProfile,
   domainPromptBlock,
   learningGuidanceBlock,
@@ -71,16 +72,16 @@ const LEARNINGS_SYSTEM = `You extract factual learnings from scraped source cont
 ## Required structure for EACH learning
 
 Template (pick whichever fits the source fact):
-  "<Method/Tool> achieves <Metric> of <Value> on <Benchmark/Dataset> for <Model/Setup>"
-  "<Method> reduces <Resource> by <Value> compared to <Baseline>"
-  "<Observation> holds for <Model/Setup> but fails for <Counter-example>"
-  "<Authors/Paper> report <Finding> with <Dataset> in <Year>"
+  "SOURCE <index> <url> | <Method/Tool> achieves <Metric> of <Value> on <Benchmark/Dataset> for <Model/Setup>"
+  "SOURCE <index> <url> | <Method> reduces <Resource> by <Value> compared to <Baseline>"
+  "SOURCE <index> <url> | <Observation> holds for <Model/Setup> but fails for <Counter-example>"
+  "SOURCE <index> <url> | <Authors/Paper> report <Finding> with <Dataset> in <Year>"
 
 Examples of GOOD learnings:
-  ✓ "Smith et al. report a 21% reduction in outcome X for population Y after 12 weeks"
-  ✓ "Method A reduces resource B by 4.7x compared to baseline C on benchmark D"
-  ✓ "Compound X degrades by 38% after 2 MED UVA exposure in emulsion Y"
-  ✓ "Official framework Z added feature Q in version 1.2 but documents limitation R"
+  ✓ "SOURCE 1 https://example.org/paper | Smith et al. report a 21% reduction in outcome X for population Y after 12 weeks"
+  ✓ "SOURCE 2 https://example.org/report | Method A reduces resource B by 4.7x compared to baseline C on benchmark D"
+  ✓ "SOURCE 3 https://example.org/study | Compound X degrades by 38% after 2 MED UVA exposure in emulsion Y"
+  ✓ "SOURCE 4 https://example.org/docs | Official framework Z added feature Q in version 1.2 but documents limitation R"
 
 Examples of BAD learnings (REJECT, skip):
   ✗ "The method is significant"                         — no number, entity, or measured outcome
@@ -410,8 +411,7 @@ async function deepResearch(opts: {
       }
       // Site-filtered SearXNG — gives us Google ranking but only over
       // arxiv/openreview/aclanthology/neurips/pmlr, avoiding blog noise.
-      const academicSites =
-        "site:arxiv.org OR site:openreview.net OR site:aclanthology.org OR site:papers.nips.cc OR site:proceedings.mlr.press OR site:dl.acm.org";
+      const academicSites = academicSiteFilter(domainProfile);
       const filtered = await searchSearXNG(`${query} ${academicSites}`, {
         pageno: 1,
         maxResults: 15,
@@ -535,8 +535,9 @@ async function deepResearch(opts: {
         query,
         researchGoal: research_goal,
         contents: fullContents,
-        numLearnings: 5,
-        numFollowUps: 3,
+        sources: contentfulSources,
+        numLearnings: positiveIntEnv("HARVEST_LEARNINGS_PER_QUERY", 8),
+        numFollowUps: positiveIntEnv("HARVEST_FOLLOWUPS_PER_QUERY", 4),
         domainProfile,
       });
       allLearnings.push(...extracted.learnings);
@@ -612,6 +613,7 @@ async function deepResearch(opts: {
             query: "citations snowballed from primary sources",
             researchGoal: opts.taskGoal,
             contents: snowballContents,
+            sources: snowballSources,
             numLearnings: 8,
             numFollowUps: 0,
             domainProfile,
@@ -712,6 +714,7 @@ export async function extractLearnings(args: {
   query: string;
   researchGoal: string;
   contents: string[];
+  sources?: SearchResult[];
   numLearnings: number;
   numFollowUps: number;
   domainProfile?: DomainProfile;
@@ -720,12 +723,13 @@ export async function extractLearnings(args: {
     query,
     researchGoal,
     contents,
+    sources,
     numLearnings,
     numFollowUps,
     domainProfile = detectDomainProfile(`${query}\n${researchGoal}`),
   } = args;
 
-  const promptPrefix = `Query: ${query}\nGoal: ${researchGoal}\n\nExtract at most ${numLearnings} concise learnings with specific numbers/names/metrics. Also generate at most ${numFollowUps} follow-up questions to deepen research.\n\nSources:\n`;
+  const promptPrefix = `Query: ${query}\nGoal: ${researchGoal}\n\nExtract at most ${numLearnings} concise learnings with specific numbers/names/metrics. Also generate at most ${numFollowUps} follow-up questions to deepen research.\n\nCRITICAL SOURCE LINKING:\n- Each learning MUST start with: SOURCE <index> <url> | <finding>\n- Use the exact source index and URL from the wrapper below.\n- Do not omit the SOURCE prefix; downstream attribution depends on it.\n\nSources:\n`;
 
   // Build batches that fit within token budget
   const budget = await inputTokenBudget();
@@ -740,7 +744,11 @@ export async function extractLearnings(args: {
   let currentTokens = 0;
 
   for (let i = 0; i < contents.length; i++) {
-    const wrapped = `<content index="${i + 1}">\n${contents[i]}\n</content>\n\n`;
+    const src = sources?.[i];
+    const attrs = src
+      ? ` index="${i + 1}" url="${src.url}" title="${(src.title ?? "").replace(/"/g, "'")}"`
+      : ` index="${i + 1}"`;
+    const wrapped = `<content${attrs}>\n${contents[i]}\n</content>\n\n`;
     const tokens = await countTokens(wrapped);
     if (tokens > batchBudget) {
       // Single source too large — truncate it

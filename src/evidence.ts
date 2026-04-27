@@ -183,6 +183,17 @@ function findBestSourceForLearning(
   sources: SearchResult[],
   contentDir: string
 ): SearchResult | null {
+  const linkedUrl = sourceUrlFromLearning(learning);
+  if (linkedUrl) {
+    const linked = sources.find(
+      (s) =>
+        s.url === linkedUrl ||
+        linkedUrl.includes(s.url) ||
+        s.url.includes(linkedUrl)
+    );
+    if (linked) return linked;
+  }
+
   const normLearning = learning.toLowerCase().replace(/\s+/g, " ").trim();
   const keyPhrase = normLearning.slice(0, Math.min(60, normLearning.length));
 
@@ -201,6 +212,17 @@ function findBestSourceForLearning(
   }
 
   return sources[0] ?? null;
+}
+
+function sourceUrlFromLearning(learning: string): string | null {
+  const m = learning.match(/^\s*SOURCE\s+\d+\s+(https?:\/\/\S+)\s*\|/i);
+  return m?.[1]?.trim() ?? null;
+}
+
+function stripSourcePrefix(learning: string): string {
+  return learning
+    .replace(/^\s*SOURCE\s+\d+\s+https?:\/\/\S+\s*\|\s*/i, "")
+    .trim();
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -310,7 +332,14 @@ export async function extractEvidence(
 
     const sortedResults = orderedResults;
     const maxCatalogSources = positiveIntEnv("EVIDENCE_CATALOG_SOURCES", 24);
-    const catalogResults = sortedResults.slice(0, maxCatalogSources);
+    const linkedUrls = new Set(
+      learnings.map(sourceUrlFromLearning).filter(Boolean) as string[]
+    );
+    const linkedResults = sortedResults.filter((r) => linkedUrls.has(r.url));
+    const catalogResults = [
+      ...linkedResults,
+      ...sortedResults.filter((r) => !linkedUrls.has(r.url)),
+    ].slice(0, Math.max(maxCatalogSources, linkedResults.length));
     const sourceCatalog = catalogResults
       .map(
         (r, i) => {
@@ -375,12 +404,12 @@ SOURCES consulted (${sortedResults.length} active URLs, ${skippedBySourceTrust} 
 ${sourceCatalog}
 
 For each learning in this batch, produce 1-2 facts only if the source catalog can plausibly support them:
-- statement: the learning text (may be lightly rephrased but keep all numbers/names)
+- statement: the learning text without the leading "SOURCE <n> <url> |" marker (may be lightly rephrased but keep all numbers/names)
 - factuality: quantitative | qualitative | comparative | background
 - confidence: 0.0-1.0
 - question_id: ${sourceIndex.question_id}
 - subquestion_id: ${sourceIndex.subquestion_id}
-- references: array with {url, title, exact_quote=the learning text verbatim}; pick the most plausible source URL from the catalog
+- references: array with {url, title, exact_quote=the learning text without the SOURCE marker}; if the learning has a SOURCE marker, use that URL unless the catalog clearly shows a better primary source
 
 Output JSON only (fact IDs will be assigned after all subquestions finish).`;
 
@@ -403,9 +432,11 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
         for (const fact of object.facts) {
           fact.question_id = sourceIndex.question_id;
           fact.subquestion_id = sourceIndex.subquestion_id;
+          fact.statement = stripSourcePrefix(fact.statement);
 
           const validRefs = [];
           for (const ref of fact.references ?? []) {
+            const cleanQuote = stripSourcePrefix(ref.exact_quote ?? fact.statement);
             const matchingSrc = activeSources.find(
               (s) =>
                 s.url === ref.url ||
@@ -416,11 +447,11 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
               validRefs.push({
                 url: matchingSrc.url,
                 title: matchingSrc.title,
-                exact_quote: ref.exact_quote ?? fact.statement,
+                exact_quote: cleanQuote,
               });
             } else {
               const best = findBestSourceForLearning(
-                fact.statement,
+                ref.exact_quote ?? fact.statement,
                 activeSources,
                 contentDir
               );
@@ -428,7 +459,7 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
                 validRefs.push({
                   url: best.url,
                   title: best.title,
-                  exact_quote: fact.statement,
+                  exact_quote: cleanQuote,
                 });
               }
             }
@@ -443,7 +474,7 @@ Output JSON only (fact IDs will be assigned after all subquestions finish).`;
               validRefs.push({
                 url: best.url,
                 title: best.title,
-                exact_quote: fact.statement,
+                exact_quote: stripSourcePrefix(fact.statement),
               });
             }
           }

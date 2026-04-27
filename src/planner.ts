@@ -7,6 +7,7 @@ import {
   type Subquestion,
 } from "./schemas/plan";
 import type { ScoutDigest } from "./scout";
+import { detectDomainProfile, plannerGuidanceBlock } from "./domain-profile";
 
 const PLANNER_SYSTEM_PROMPT = `You are a senior research planner. Produce a plan that structures LITERATURE RESEARCH around concrete questions the user wants answered.
 
@@ -17,7 +18,7 @@ The plan is a QUESTION STRUCTURE, not a hypothesis with predicted numeric answer
 DO:
   - Formulate questions the user genuinely needs answered to act on the topic.
   - Decompose each question into 2-5 searchable sub-questions that drive literature queries.
-  - Let the topic's scope determine the count inside the allowed range: at least 5 research questions, up to 15 for broad / ambiguous / product-critical topics.
+  - Let the topic's scope determine the count inside the allowed range: 5 focused questions for narrow applied/R&D topics, up to 15 for broad / ambiguous / product-critical topics.
 
 DO NOT:
   - Fabricate numeric thresholds ("≥50% reduction", "≤1.5% perplexity") — those are EVIDENCE outputs, not plan inputs.
@@ -99,6 +100,7 @@ export interface PlannerInput {
 }
 
 export async function makePlan(input: PlannerInput): Promise<ResearchPlan> {
+  const domainProfile = detectDomainProfile(input.topic, input.constraints);
   // If scouting digest is available, inline it into the planner prompt as
   // ground truth the questions should reference. Planner learns what methods
   // exist in literature and which open questions remain, rather than
@@ -145,8 +147,9 @@ export async function makePlan(input: PlannerInput): Promise<ResearchPlan> {
   const prompt = [
     `Research topic: ${input.topic}`,
     input.constraints ? `Additional constraints: ${input.constraints}` : "",
+    plannerGuidanceBlock(domainProfile),
     scoutingBlock,
-    "Produce the research plan. Use 5-15 research questions: never fewer than 5; use 10-15 when the topic has many methods, benchmarks, deployment paths, or unresolved trade-offs.",
+    "Produce the research plan. Use exactly 5 questions for a narrow applied topic; use 6-9 for medium scope; use 10-15 only when the topic is broad, compares many methods, or explicitly asks for a landscape survey.",
     "If the topic is a product evaluation or deploy-readiness audit, treat the named product as the target being designed/audited. Ask what it should prove or implement; do not assume public benchmark scores, customer deployments, or implementation details exist unless provided in the topic or constraints.",
     "IDs must be explicit strings: questions Q1, Q2, ... and subquestions Q1.1, Q1.2, ...",
     "Subquestion angle must be exactly one of: benchmark, methodology, comparison, case_study, feasibility, trade_off.",
@@ -194,9 +197,10 @@ export function normalizePlan(
   topic: string,
   constraints?: string
 ): ResearchPlan {
+  const maxQuestions = maxQuestionsForTopic(topic, constraints);
   const questions = (plan.questions ?? [])
     .filter((q) => q.question?.trim())
-    .slice(0, 15)
+    .slice(0, maxQuestions)
     .map((q, i) => normalizeQuestion(q, i));
 
   while (questions.length < 5) {
@@ -212,6 +216,17 @@ export function normalizePlan(
     constraints: plan.constraints || constraints,
     questions,
   };
+}
+
+function maxQuestionsForTopic(topic: string, constraints?: string): number {
+  const profile = detectDomainProfile(topic, constraints);
+  const text = `${topic}\n${constraints ?? ""}`.toLowerCase();
+  const broad =
+    /\b(landscape|survey|compare|comparison|competitor|pricing|features|collaboration|market|ecosystem|state of the art|sota|many|multiple)\b/.test(
+      text
+    );
+  if (profile.id === "chemistry_cosmetics" && !broad) return 5;
+  return 15;
 }
 
 function normalizeQuestion(q: ResearchQuestion, index: number): ResearchQuestion {
