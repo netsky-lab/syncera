@@ -62,18 +62,22 @@ export async function tweakRecommendation(
     .join("\n\n");
   const { recommendation } = await generateJson({
     schema: z.object({ recommendation: z.string() }),
-    system: `You write a Recommendation paragraph (4-6 sentences) that closes a question-first research report. This is the reasoned verdict — what to actually do today given what the evidence shows.
+    system: `You write a Recommendation paragraph (5-7 sentences) that closes a question-first research report. This is the reasoned verdict — what to actually do today given what the evidence shows.
 
 Structure (as prose, not bullets):
-  1. RECOMMENDED PRIMARY APPROACH: the method/stack best-supported today, with 1-2 [F#] citations and a specific config.
-  2. REASONING: why this over alternatives.
-  3. FALLBACK: if the primary fails, what's the second choice + a citation.
-  4. TRIGGER for revisiting: what specific measurement should override the recommendation.
+  1. LAB / MEASUREMENT PROTOCOL: the best-supported experimental or validation protocol, with 1-2 [F#] citations and a specific config.
+  2. PRODUCT / REAL-WORLD DOSING: the safer operational choice for actual product use, field deployment, or customer workflow; do not reuse lab saturation protocols as usage advice unless the evidence explicitly says so.
+  3. REASONING: why these contexts differ.
+  4. FALLBACK: if the primary protocol or product choice fails, what's the second choice + a citation.
+  5. TRIGGER for revisiting: what specific measurement should override the recommendation.
 
 Rules:
 - Every factual claim cites [F#].
 - Pick ACTUAL methods from evidence — do not invent.
 - ${ANTI_STYLE}
+- Keep measurement protocols separate from real-world deployment advice. If a high-dose, stress, benchmark, saturation, or accelerated-aging setup is useful for measurement, say it is for measurement/testing only.
+- If the evidence does not establish an exact operating threshold for product use, name the missing threshold instead of presenting a lab condition as the product recommendation.
+- Do not invert measurement-correction facts. If evidence says excluding, omitting, or failing to account for a correction changes the result, recommend accounting for that correction, not excluding it.
 
 INSTRUMENT GENERICITY (critical):
 - When a cited fact names a specific brand / commercial instrument as an example of a measurement category (e.g. VapoMeter, Tewameter, Corneometer), the recommendation MUST generalize to the instrument CATEGORY (e.g. "a TEWL meter", "a skin-barrier probe") unless the study's finding is specifically about that instrument's unique capability.

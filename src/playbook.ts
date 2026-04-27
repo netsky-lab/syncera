@@ -25,6 +25,8 @@ Hard rules:
 - If the evidence is thin, turn uncertainty into evals and research debt instead of confident rules.
 - Write for a professional operator: founder, analyst, researcher, engineer, or R&D team.
 - Prefer specific actions over summaries.
+- Keep measurement protocols separate from production/product-use rules. A high-dose, stress, benchmark, saturation, or accelerated-aging setup can become an eval or lab checklist, but not a product operating rule unless a verified fact explicitly supports that use.
+- When a product-use threshold is unknown, encode the missing threshold as research debt or an eval trigger instead of converting a lab condition into deployment advice.
 - Never use: significantly, substantially, effective, impressive, important, promising.
 
 Output JSON matching the schema exactly.`;
