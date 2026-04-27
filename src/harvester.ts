@@ -138,11 +138,6 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
   const maxHarvestMinutes = positiveIntEnv("MAX_HARVEST_MINUTES", 90);
   const maxHarvestSources = positiveIntEnv("MAX_HARVEST_SOURCES", 400);
   const harvestDeadlineMs = Date.now() + maxHarvestMinutes * 60 * 1000;
-  const budget = {
-    deadlineMs: harvestDeadlineMs,
-    maxSources: maxHarvestSources,
-    sourcesSoFar: 0,
-  };
 
   const sourcesDir = join(projectDir, "sources");
   const contentDir = join(projectDir, "sources", "content");
@@ -166,7 +161,13 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
     }
   }
   const expectedUnitIds = new Set(allUnits.map((u) => u.subquestion.id));
+  const maxSourcesPerUnit = Math.max(
+    urlsPerQuery,
+    Math.ceil(maxHarvestSources / Math.max(1, allUnits.length))
+  );
   if (input.force) {
+    rmSync(contentDir, { recursive: true, force: true });
+    mkdirSync(contentDir, { recursive: true });
     for (const file of readdirSync(sourcesDir)) {
       if (file === "index.json" || /^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(file)) {
         rmSync(join(sourcesDir, file), { force: true });
@@ -209,7 +210,7 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
   }
 
   console.log(
-    `[harvester] ${allIndices.length} cached, ${pendingUnits.length} to collect (concurrency=${HARVEST_CONCURRENCY})`
+    `[harvester] ${allIndices.length} cached, ${pendingUnits.length} to collect (concurrency=${HARVEST_CONCURRENCY}, source cap≈${maxSourcesPerUnit}/unit)`
   );
 
   async function processUnit(unit: HarvestUnit): Promise<void> {
@@ -223,15 +224,9 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
     const goal = `Research question: ${unit.question.question}\nSubquestion (${unit.subquestion.angle}): ${unit.subquestion.text}`;
 
     // Budget check before spinning up another subquestion loop.
-    if (Date.now() > budget.deadlineMs) {
+    if (Date.now() > harvestDeadlineMs) {
       console.warn(
         `[harvester] skipping ${header} — harvest time budget exhausted (${maxHarvestMinutes} min)`
-      );
-      return null;
-    }
-    if (budget.sourcesSoFar >= budget.maxSources) {
-      console.warn(
-        `[harvester] skipping ${header} — harvest source budget exhausted (${budget.maxSources})`
       );
       return null;
     }
@@ -247,11 +242,15 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
       learnings: [],
       globalVisited,
       contentDir,
-      budget,
       // plan.constraints carries the brief's domain_hints/constraints
       // from the pre-research scope chat. Pinning queries to this domain
       // prevents off-field matches (titanium-physics on a cosmetics run).
       domainContext: plan.constraints,
+      budget: {
+        deadlineMs: harvestDeadlineMs,
+        maxSources: maxSourcesPerUnit,
+        sourcesSoFar: 0,
+      },
     });
 
     const index: SourceIndex = {
