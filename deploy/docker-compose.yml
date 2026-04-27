@@ -38,6 +38,7 @@ services:
       # Publish on all interfaces so the site is reachable from the internet.
       # Basic Auth + HTTPS (via reverse proxy) is recommended for production;
       # without TLS the password travels in clear text — see deploy/README.md.
+      - "80:3000"
       - "3000:3000"
     environment:
       BASIC_AUTH_USER: ${BASIC_AUTH_USER:-research}
