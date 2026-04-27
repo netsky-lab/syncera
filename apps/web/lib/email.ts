@@ -59,7 +59,7 @@ export async function sendEmail(opts: EmailOptions): Promise<{
 // once we have a custom domain). Falls back to http://<host>:3000 for
 // dev/IP deployments.
 export function appBaseUrl(): string {
-  return (process.env.APP_BASE_URL ?? "http://156.67.28.41:3000").replace(
+  return (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(
     /\/+$/,
     ""
   );

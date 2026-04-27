@@ -1,6 +1,7 @@
 import { startRun } from "@/lib/runner";
 import { requireAuth } from "@/lib/auth";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
+import { assertPublicHttpUrl } from "@/lib/request-security";
 
 export async function POST(request: Request) {
   const auth = requireAuth(request);
@@ -11,7 +12,7 @@ export async function POST(request: Request) {
   // webhooks only fire for UI-initiated runs.
   const cookie = request.headers.get("cookie") ?? "";
   const m = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
-  const ownerUid = verifySession(m?.[1])?.uid ?? null;
+  const ownerUid = verifySessionUser(m?.[1])?.uid ?? null;
 
   const body = await request.json().catch(() => ({}));
   const topic = String(body.topic ?? "").trim();
@@ -23,10 +24,22 @@ export async function POST(request: Request) {
   // Optional user-curated source URLs. When present the pipeline skips
   // scout+harvest and uses only these URLs for evidence extraction.
   const rawSources = Array.isArray(body.user_sources) ? body.user_sources : [];
-  const userSources = rawSources
+  const sourceCandidates = rawSources
     .map((u: any) => String(u).trim())
     .filter((u: string) => /^https?:\/\/.+/.test(u))
     .slice(0, 100); // cap to prevent abuse
+  const userSources: string[] = [];
+  for (const candidate of sourceCandidates) {
+    try {
+      const safe = await assertPublicHttpUrl(candidate);
+      userSources.push(safe.toString());
+    } catch (err: any) {
+      return Response.json(
+        { error: `Unsafe source URL rejected: ${err?.message ?? String(err)}` },
+        { status: 400 }
+      );
+    }
+  }
 
   if (!topic || topic.length < 4) {
     return Response.json(

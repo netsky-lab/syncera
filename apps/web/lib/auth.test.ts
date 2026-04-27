@@ -80,9 +80,17 @@ describe("requireAuth", () => {
   });
 
   test("accepts Basic Auth with configured user/pass", () => {
+    delete process.env.SESSION_SECRET;
     const basic = "Basic " + Buffer.from("research:s3cret-pass").toString("base64");
     const r = A.requireAuth(req({ authorization: basic }));
     expect(r.ok).toBe(true);
+  });
+
+  test("rejects Basic Auth fallback when session cookies are configured", () => {
+    process.env.SESSION_SECRET = "b".repeat(64);
+    const basic = "Basic " + Buffer.from("research:s3cret-pass").toString("base64");
+    const r = A.requireAuth(req({ authorization: basic }));
+    expect(r.ok).toBe(false);
   });
 
   test("rejects wrong Basic Auth password", () => {
@@ -109,6 +117,14 @@ describe("requireAuth", () => {
     expect(r.ok).toBe(false);
   });
 
+  test("does not enter dev-open mode when SESSION_SECRET is set", () => {
+    delete process.env.BASIC_AUTH_PASS;
+    delete process.env.API_KEYS;
+    process.env.SESSION_SECRET = "b".repeat(64);
+    const r = A.requireAuth(req({}));
+    expect(r.ok).toBe(false);
+  });
+
   test("accepts a valid session cookie (browser-UI path)", () => {
     const admin = U.createUser({
       email: "keys-api-user@test.com",
@@ -119,6 +135,19 @@ describe("requireAuth", () => {
     const token = S.signSession(admin.user.id);
     const r = A.requireAuth(req({ cookie: `rl_session=${token}` }));
     expect(r.ok).toBe(true);
+  });
+
+  test("rejects a session cookie issued before password change", () => {
+    const user = U.createUser({
+      email: "rotated@test.com",
+      password: "pass-pass-1234",
+      role: "user",
+    });
+    if (!user.ok) throw new Error("setup failed");
+    const token = S.signSession(user.user.id, user.user.session_version ?? 0);
+    U.setPasswordByUid(user.user.id, "new-pass-pass-1234");
+    const r = A.requireAuth(req({ cookie: `rl_session=${token}` }));
+    expect(r.ok).toBe(false);
   });
 
   test("rejects a tampered session cookie", () => {
@@ -224,6 +253,7 @@ describe("requireBasicAuth", () => {
   });
 
   test("accepts Basic Auth fallback when no session present", () => {
+    delete process.env.SESSION_SECRET;
     const basic = "Basic " + Buffer.from("research:s3cret-pass").toString("base64");
     const r = A.requireBasicAuth(req({ authorization: basic }));
     expect(r.ok).toBe(true);

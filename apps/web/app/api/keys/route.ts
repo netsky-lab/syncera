@@ -4,14 +4,14 @@
 
 import { listKeys, createKey } from "@/lib/keys";
 import { cookies } from "next/headers";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 async function requireUserUid(): Promise<string | Response> {
   const jar = await cookies();
-  const uid = verifySession(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
+  const uid = verifySessionUser(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
   if (!uid) {
     return Response.json(
       { error: "Sign in to manage API keys" },

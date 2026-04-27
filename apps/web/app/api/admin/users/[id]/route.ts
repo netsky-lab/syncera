@@ -1,6 +1,6 @@
 import { deleteUser, findUserById, listUsers } from "@/lib/users";
 import { requireBasicAuth } from "@/lib/auth";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,7 +16,7 @@ export async function DELETE(
   // Identify the caller from the session cookie to prevent self-delete.
   const cookie = request.headers.get("cookie") ?? "";
   const match = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
-  const session = verifySession(match?.[1]);
+  const session = verifySessionUser(match?.[1]);
   if (session?.uid === id) {
     return Response.json(
       { error: "You cannot delete your own account while signed in." },

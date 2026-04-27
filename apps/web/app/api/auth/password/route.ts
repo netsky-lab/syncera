@@ -1,5 +1,5 @@
 import { updatePassword } from "@/lib/users";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME, clearCookieHeader, isSecureRequest } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const cookie = request.headers.get("cookie") ?? "";
   const match = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
-  const session = verifySession(match?.[1]);
+  const session = verifySessionUser(match?.[1]);
   if (!session) {
     return Response.json({ error: "Not signed in" }, { status: 401 });
   }
@@ -19,5 +19,8 @@ export async function POST(request: Request) {
   }
   const result = updatePassword(session.uid, current, next);
   if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
-  return Response.json({ ok: true });
+  return Response.json(
+    { ok: true, signed_out: true },
+    { headers: { "Set-Cookie": clearCookieHeader(isSecureRequest(request)) } }
+  );
 }

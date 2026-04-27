@@ -1,8 +1,14 @@
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, viewerUidFromRequest } from "@/lib/auth";
+import { canView } from "@/lib/projects";
 
-const PROJECTS_DIR = join(process.cwd(), "..", "..", "projects");
+function projectsDir(): string {
+  if (process.env.PROJECTS_DIR) return process.env.PROJECTS_DIR;
+  const cwdProjects = join(process.cwd(), "projects");
+  if (existsSync(cwdProjects)) return cwdProjects;
+  return join(process.cwd(), "..", "..", "projects");
+}
 
 function hashUrl(url: string): string {
   let h = 0;
@@ -24,9 +30,12 @@ export async function GET(request: Request) {
   if (!slug || !sourceUrl) {
     return Response.json({ error: "Missing slug or url" }, { status: 400 });
   }
+  if (!canView(slug, viewerUidFromRequest(request))) {
+    return Response.json({ error: "Content not found" }, { status: 404 });
+  }
 
   const hash = hashUrl(sourceUrl);
-  const path = join(PROJECTS_DIR, slug, "sources", "content", `${hash}.md`);
+  const path = join(projectsDir(), slug, "sources", "content", `${hash}.md`);
   if (!existsSync(path)) {
     return Response.json({ error: "Content not found", hash }, { status: 404 });
   }

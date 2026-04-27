@@ -1,9 +1,10 @@
 // Per-user webhook config. Session-cookie only; API keys can't alter the
 // user that minted them (small blast-radius principle).
 
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 import { findUserById, setWebhook } from "@/lib/users";
 import { randomBytes } from "crypto";
+import { assertPublicHttpUrl } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -11,7 +12,7 @@ export const runtime = "nodejs";
 function currentUser(request: Request) {
   const cookie = request.headers.get("cookie") ?? "";
   const m = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
-  const session = verifySession(m?.[1]);
+  const session = verifySessionUser(m?.[1]);
   if (!session) return null;
   return findUserById(session.uid);
 }
@@ -36,6 +37,16 @@ export async function POST(request: Request) {
   const url = String(body.url ?? "").trim();
   if (!url) {
     return Response.json({ error: "url is required" }, { status: 400 });
+  }
+  try {
+    await assertPublicHttpUrl(url, {
+      requireHttps: process.env.NODE_ENV === "production",
+    });
+  } catch (err: any) {
+    return Response.json(
+      { error: `Webhook URL rejected: ${err?.message ?? String(err)}` },
+      { status: 400 }
+    );
   }
   const rotate = Boolean(body.rotate_secret) || !u.webhook_secret;
   const secret = rotate

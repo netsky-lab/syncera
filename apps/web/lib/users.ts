@@ -26,6 +26,9 @@ export interface User {
   // true (back-compat: missing field treated as verified) so the check
   // only gates NEW signups post-2026-04-21.
   email_verified?: boolean;
+  // Bumped whenever credentials change. Session cookies carry the value
+  // they were issued with, so password changes can invalidate old cookies.
+  session_version?: number;
 }
 
 // Resolve per-call so tests (and any env changes) take effect without
@@ -117,6 +120,7 @@ export function createUser(params: {
     created_at: Date.now(),
     last_login_at: null,
     email_verified: params.emailVerified ?? false,
+    session_version: 0,
   };
   all.push(user);
   writeAll(all);
@@ -141,6 +145,7 @@ export function setPasswordByUid(userId: string, newPassword: string): { ok: tru
   const idx = all.findIndex((u) => u.id === userId);
   if (idx === -1) return { ok: false, error: "User not found" };
   all[idx]!.password_hash = hashPassword(newPassword);
+  all[idx]!.session_version = (all[idx]!.session_version ?? 0) + 1;
   writeAll(all);
   return { ok: true };
 }
@@ -180,6 +185,7 @@ export function updatePassword(
     return { ok: false, error: "Current password is incorrect" };
   }
   all[idx]!.password_hash = hashPassword(newPassword);
+  all[idx]!.session_version = (all[idx]!.session_version ?? 0) + 1;
   writeAll(all);
   return { ok: true };
 }

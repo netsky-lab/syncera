@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import "./globals.css";
 import "highlight.js/styles/github-dark.css";
 import { AppShell } from "@/components/app-shell";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 
 const inter = Inter_Tight({
   variable: "--font-inter",
@@ -45,7 +45,7 @@ export default async function RootLayout({
 }>) {
   const jar = await cookies();
   const viewerUid =
-    verifySession(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
+    verifySessionUser(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
 
   return (
     <html

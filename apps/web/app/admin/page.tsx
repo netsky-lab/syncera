@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 import { findUserById, listUsers } from "@/lib/users";
 import { listProjects, getOwner } from "@/lib/projects";
 import { listKeys } from "@/lib/keys";
@@ -14,7 +14,7 @@ export const metadata = { robots: { index: false, follow: false } };
 
 export default async function AdminPage() {
   const jar = await cookies();
-  const viewerUid = verifySession(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
+  const viewerUid = verifySessionUser(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
   const user = viewerUid ? findUserById(viewerUid) : null;
   if (!user) redirect("/login?next=/admin");
   if (user.role !== "admin") redirect("/");

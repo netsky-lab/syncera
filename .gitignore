@@ -4,6 +4,8 @@ node_modules
 # output
 out
 dist
+.next
+/apps/web/.next/
 *.tgz
 
 # code coverage

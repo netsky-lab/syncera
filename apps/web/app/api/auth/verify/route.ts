@@ -4,7 +4,7 @@
 
 import { verifyToken } from "@/lib/auth-tokens";
 import { findUserById, markEmailVerified } from "@/lib/users";
-import { signSession, sessionCookieHeader } from "@/lib/sessions";
+import { signSession, sessionCookieHeader, isSecureRequest } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -27,14 +27,14 @@ export async function GET(request: Request) {
     return new Response("User not found", { status: 404 });
   }
   markEmailVerified(user.id);
-  const session = signSession(user.id);
-  const isSecure = request.url.startsWith("https://");
+  const freshUser = findUserById(user.id);
+  const session = signSession(user.id, freshUser?.session_version ?? 0);
   // 303 See Other — browser follows with GET, drops token from the URL
   return new Response(null, {
     status: 303,
     headers: {
       Location: "/",
-      "Set-Cookie": sessionCookieHeader(session, isSecure),
+      "Set-Cookie": sessionCookieHeader(session, isSecureRequest(request)),
     },
   });
 }

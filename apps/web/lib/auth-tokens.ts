@@ -36,6 +36,7 @@ export interface TokenPayload {
   uid: string;
   kind: TokenKind;
   exp: number; // unix seconds
+  sv?: number;
 }
 
 export function signToken(payload: Omit<TokenPayload, "exp">, ttlSeconds: number): string {

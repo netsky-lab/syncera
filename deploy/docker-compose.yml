@@ -46,8 +46,8 @@ services:
       # Comma-separated list of accepted API keys for /api/* endpoints.
       # If unset, API routes require Basic Auth.
       API_KEYS: ${API_KEYS:-}
-      # CORS: "*" permissive (dev); pin to consumer origin in production.
-      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-*}
+      # CORS: empty is fail-closed. Pin to consumer origin(s) when exposing API cross-origin.
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-}
       # Requests per minute per identity (API key or basic-auth).
       API_RATE_LIMIT_PER_MIN: ${API_RATE_LIMIT_PER_MIN:-60}
       # Session cookie signing secret. MUST be set in production — 32+ chars.
@@ -60,11 +60,13 @@ services:
       # Bootstrap admin user on first start (seeded to users.json).
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      BOOTSTRAP_TOKEN: ${BOOTSTRAP_TOKEN:-}
       # Open signup (default: first user becomes admin, rest require invite).
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-0}
       # Public base URL used in webhook payload's `artifacts.*` links.
       # Must be externally reachable by the webhook consumer.
       PUBLIC_URL: ${PUBLIC_URL:-}
+      APP_BASE_URL: ${APP_BASE_URL:-}
       NODE_ENV: production
       # LLM endpoint + search used when the web UI spawns a pipeline run.
       # Override via deploy/.env.

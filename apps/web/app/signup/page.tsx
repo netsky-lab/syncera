@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { AuthForm } from "@/components/auth-form";
 import { listUsers } from "@/lib/users";
 import { Card, CardContent } from "@/components/ui/card";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { robots: { index: false, follow: false } };
@@ -13,7 +13,7 @@ export default async function SignupPage() {
   // Already signed in? No reason to be here.
   const jar = await cookies();
   const token = jar.get(COOKIE_NAME)?.value;
-  if (verifySession(token)) redirect("/");
+  if (verifySessionUser(token)) redirect("/");
 
   const signupOpen = process.env.ALLOW_SIGNUP === "1";
   const isBootstrap = listUsers().length === 0;

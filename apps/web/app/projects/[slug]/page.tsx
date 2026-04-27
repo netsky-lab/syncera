@@ -2,7 +2,7 @@ import { getProject, listBranches } from "@/lib/projects";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -146,7 +146,7 @@ export default async function ProjectPage({
 }) {
   const { slug } = await params;
   const jar = await cookies();
-  const viewerUid = verifySession(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
+  const viewerUid = verifySessionUser(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
   const viewerUser = viewerUid
     ? (await import("@/lib/users")).findUserById(viewerUid)
     : null;

@@ -2,7 +2,7 @@
 // caller's configured webhook URL. Returns the downstream HTTP status so
 // the UI can surface it immediately. Session-only (not API-key mintable).
 
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 import { findUserById, getWebhookTarget } from "@/lib/users";
 import { createHmac } from "crypto";
 
@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const cookie = request.headers.get("cookie") ?? "";
   const m = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
-  const session = verifySession(m?.[1]);
+  const session = verifySessionUser(m?.[1]);
   if (!session)
     return Response.json({ error: "Not signed in" }, { status: 401 });
   const user = findUserById(session.uid);

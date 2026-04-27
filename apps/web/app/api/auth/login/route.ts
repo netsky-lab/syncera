@@ -1,5 +1,5 @@
 import { authenticate, ensureAdminSeed, findUserByEmail } from "@/lib/users";
-import { signSession, sessionCookieHeader } from "@/lib/sessions";
+import { signSession, sessionCookieHeader, isSecureRequest } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,13 +31,12 @@ export async function POST(request: Request) {
       { status: 403 }
     );
   }
-  const token = signSession(result.user.id);
-  const isSecure = request.url.startsWith("https://");
+  const token = signSession(result.user.id, result.user.session_version ?? 0);
   return Response.json(
     { user: result.user },
     {
       headers: {
-        "Set-Cookie": sessionCookieHeader(token, isSecure),
+        "Set-Cookie": sessionCookieHeader(token, isSecureRequest(request)),
       },
     }
   );

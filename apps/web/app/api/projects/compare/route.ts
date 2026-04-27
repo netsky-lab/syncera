@@ -13,7 +13,7 @@
 
 import { canView, getProject } from "@/lib/projects";
 import { cookies } from "next/headers";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 import { readdirSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 
@@ -90,7 +90,7 @@ function readJson(path: string): any {
 
 export async function GET(request: Request) {
   const jar = await cookies();
-  const uid = verifySession(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
+  const uid = verifySessionUser(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
   const url = new URL(request.url);
   const a = url.searchParams.get("a") ?? "";
   const b = url.searchParams.get("b") ?? "";

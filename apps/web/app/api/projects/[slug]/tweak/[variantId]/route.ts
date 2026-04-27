@@ -5,7 +5,7 @@
 import { getOwner, canView } from "@/lib/projects";
 import { findUserById } from "@/lib/users";
 import { cookies } from "next/headers";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 import { existsSync, unlinkSync } from "fs";
 import { join } from "path";
 
@@ -24,7 +24,7 @@ export async function DELETE(
   { params }: { params: Promise<{ slug: string; variantId: string }> }
 ) {
   const jar = await cookies();
-  const uid = verifySession(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
+  const uid = verifySessionUser(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
   if (!uid) {
     return Response.json({ error: "Sign in required" }, { status: 401 });
   }

@@ -1,5 +1,5 @@
-import { createUser, listUsers } from "@/lib/users";
-import { signSession, sessionCookieHeader } from "@/lib/sessions";
+import { createUser, ensureAdminSeed, listUsers } from "@/lib/users";
+import { signSession, sessionCookieHeader, isSecureRequest } from "@/lib/sessions";
 import { signToken } from "@/lib/auth-tokens";
 import { sendEmail, emailShell, appBaseUrl } from "@/lib/email";
 
@@ -18,16 +18,46 @@ export const runtime = "nodejs";
 //     link emailed. Login is blocked until they click the link.
 
 export async function POST(request: Request) {
+  const body = await request.json().catch(() => ({}));
+  ensureAdminSeed();
   const existing = listUsers();
   const signupOpen = process.env.ALLOW_SIGNUP === "1";
   const isBootstrap = existing.length === 0;
+  const bootstrapToken =
+    request.headers.get("x-bootstrap-token") ||
+    String(body.bootstrap_token ?? "");
+  const requiredBootstrapToken = process.env.BOOTSTRAP_TOKEN;
+  if (
+    isBootstrap &&
+    process.env.NODE_ENV === "production" &&
+    requiredBootstrapToken &&
+    bootstrapToken !== requiredBootstrapToken
+  ) {
+    return Response.json(
+      { error: "Bootstrap token required for first admin signup." },
+      { status: 403 }
+    );
+  }
+  if (
+    isBootstrap &&
+    process.env.NODE_ENV === "production" &&
+    !requiredBootstrapToken &&
+    (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD)
+  ) {
+    return Response.json(
+      {
+        error:
+          "First admin signup is disabled in production unless BOOTSTRAP_TOKEN or ADMIN_EMAIL/ADMIN_PASSWORD is configured.",
+      },
+      { status: 403 }
+    );
+  }
   if (!signupOpen && !isBootstrap) {
     return Response.json(
       { error: "Signup is closed. Contact an admin for an account." },
       { status: 403 }
     );
   }
-  const body = await request.json().catch(() => ({}));
   const email = String(body.email ?? "").trim();
   const password = String(body.password ?? "");
   const role = isBootstrap ? "admin" : "user";
@@ -49,13 +79,12 @@ export async function POST(request: Request) {
   }
 
   if (skipVerification) {
-    const token = signSession(result.user.id);
-    const isSecure = request.url.startsWith("https://");
+    const token = signSession(result.user.id, result.user.session_version ?? 0);
     return Response.json(
       { user: result.user, verified: true },
       {
         status: 201,
-        headers: { "Set-Cookie": sessionCookieHeader(token, isSecure) },
+        headers: { "Set-Cookie": sessionCookieHeader(token, isSecureRequest(request)) },
       }
     );
   }

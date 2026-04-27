@@ -37,13 +37,15 @@ function b64urlDecode(s: string): Buffer {
 export interface SessionPayload {
   uid: string;
   exp: number; // unix seconds
+  sv?: number; // user.session_version when issued
 }
 
-export function signSession(uid: string): string {
+export function signSession(uid: string, sessionVersion?: number): string {
   const payload: SessionPayload = {
     uid,
     exp: Math.floor(Date.now() / 1000) + MAX_AGE_S,
   };
+  if (sessionVersion != null) payload.sv = sessionVersion;
   const encoded = b64url(JSON.stringify(payload));
   const sig = b64url(createHmac("sha256", secret()).update(encoded).digest());
   return `${encoded}.${sig}`;
@@ -66,6 +68,32 @@ export function verifySession(token: string | null | undefined): SessionPayload 
   } catch {
     return null;
   }
+}
+
+export function verifySessionUser(token: string | null | undefined): SessionPayload | null {
+  const payload = verifySession(token);
+  if (!payload) return null;
+  // Internal short-lived session used by PDF rendering; not a real user.
+  if (payload.uid.startsWith("_")) return payload;
+  try {
+    const { findUserById } = require("@/lib/users") as typeof import("./users");
+    const user = findUserById(payload.uid);
+    if (!user) return null;
+    const currentVersion = user.session_version ?? 0;
+    if (payload.sv != null && payload.sv !== currentVersion) return null;
+    if (payload.sv == null && currentVersion > 0) return null;
+    return payload;
+  } catch {
+    return payload;
+  }
+}
+
+export function isSecureRequest(request: Request): boolean {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  if (forwardedProto?.split(",")[0]?.trim() === "https") return true;
+  if (request.url.startsWith("https://")) return true;
+  const appBase = process.env.APP_BASE_URL ?? process.env.PUBLIC_URL ?? "";
+  return appBase.startsWith("https://");
 }
 
 export function sessionCookieHeader(value: string, isSecure = true): string {

@@ -8,7 +8,7 @@ import {
   setPasswordByUid,
   markEmailVerified,
 } from "@/lib/users";
-import { signSession, sessionCookieHeader } from "@/lib/sessions";
+import { signSession, sessionCookieHeader, isSecureRequest } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,6 +28,12 @@ export async function POST(request: Request) {
   if (!user) {
     return Response.json({ error: "User not found" }, { status: 404 });
   }
+  if (payload.sv != null && payload.sv !== (user.session_version ?? 0)) {
+    return Response.json(
+      { error: "Reset link has already been used or superseded" },
+      { status: 400 }
+    );
+  }
   const res = setPasswordByUid(user.id, newPassword);
   if (!res.ok) {
     return Response.json({ error: res.error }, { status: 400 });
@@ -36,10 +42,10 @@ export async function POST(request: Request) {
   // in case the user never clicked the signup-confirm link but can
   // receive the reset-email now.
   markEmailVerified(user.id);
-  const session = signSession(user.id);
-  const isSecure = request.url.startsWith("https://");
+  const freshUser = findUserById(user.id);
+  const session = signSession(user.id, freshUser?.session_version ?? 0);
   return Response.json(
     { ok: true },
-    { headers: { "Set-Cookie": sessionCookieHeader(session, isSecure) } }
+    { headers: { "Set-Cookie": sessionCookieHeader(session, isSecureRequest(request)) } }
   );
 }

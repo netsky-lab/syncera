@@ -25,7 +25,7 @@
 
 import { getProject, canView, setOwner } from "@/lib/projects";
 import { cookies } from "next/headers";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 import { startRun } from "@/lib/runner";
 import { setDebtStatus } from "@/lib/debt";
 import { readSourceStatus, setSourceStatus } from "@/lib/source-status";
@@ -59,7 +59,7 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const jar = await cookies();
-  const uid = verifySession(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
+  const uid = verifySessionUser(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
   if (!uid) {
     return Response.json({ error: "Sign in required" }, { status: 401 });
   }

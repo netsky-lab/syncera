@@ -34,6 +34,7 @@ describe("createUser", () => {
     if (r.ok) {
       expect(r.user.email).toBe("a@b.com");
       expect(r.user.role).toBe("user");
+      expect(r.user.session_version).toBe(0);
       expect((r.user as any).password_hash).toBeUndefined();
     }
   });
@@ -97,6 +98,7 @@ describe("updatePassword", () => {
     expect(u.ok).toBe(true);
     expect(U.authenticate("a@b.com", "original12345").ok).toBe(false);
     expect(U.authenticate("a@b.com", "fresh-pass-99").ok).toBe(true);
+    expect(U.findUserById(r.user.id)?.session_version).toBe(1);
   });
 
   test("fails with wrong current password", () => {

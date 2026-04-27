@@ -29,7 +29,10 @@ export async function POST(request: Request) {
   }
 
   // 1-hour TTL — reset is time-sensitive, shorter than verify.
-  const token = signToken({ uid: user.id, kind: "password_reset" }, 60 * 60);
+  const token = signToken(
+    { uid: user.id, kind: "password_reset", sv: user.session_version ?? 0 },
+    60 * 60
+  );
   const link = `${appBaseUrl()}/reset-password?token=${encodeURIComponent(token)}`;
   const send = await sendEmail({
     to: user.email,

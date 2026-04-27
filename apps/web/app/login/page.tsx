@@ -1,7 +1,7 @@
 import { AuthForm } from "@/components/auth-form";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { robots: { index: false, follow: false } };
@@ -10,7 +10,7 @@ export default async function LoginPage() {
   // Already signed in? Skip straight to the dashboard.
   const jar = await cookies();
   const token = jar.get(COOKIE_NAME)?.value;
-  if (verifySession(token)) redirect("/");
+  if (verifySessionUser(token)) redirect("/");
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12">

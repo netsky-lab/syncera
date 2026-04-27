@@ -9,7 +9,7 @@ import {
 import { getOwner, canView } from "@/lib/projects";
 import { findUserById } from "@/lib/users";
 import { cookies } from "next/headers";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,7 +18,7 @@ async function requireProjectOwnerOrAdmin(
   slug: string
 ): Promise<{ ok: true; uid: string } | { ok: false; response: Response }> {
   const jar = await cookies();
-  const uid = verifySession(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
+  const uid = verifySessionUser(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
   if (!uid) {
     return {
       ok: false,

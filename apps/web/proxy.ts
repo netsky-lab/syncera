@@ -88,7 +88,7 @@ async function verifySessionToken(token: string | null | undefined): Promise<boo
 }
 
 function corsHeaders(origin: string | null): Record<string, string> {
-  const allowed = (process.env.API_CORS_ORIGINS ?? "*")
+  const allowed = (process.env.API_CORS_ORIGINS ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);

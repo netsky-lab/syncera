@@ -5,13 +5,13 @@ import { LivePipeline } from "@/components/live-pipeline";
 import { LandingHero } from "@/components/landing-hero";
 import { ResearchTable } from "@/components/research-table";
 import { cookies } from "next/headers";
-import { verifySession, COOKIE_NAME } from "@/lib/sessions";
+import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const jar = await cookies();
-  const viewerUid = verifySession(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
+  const viewerUid = verifySessionUser(jar.get(COOKIE_NAME)?.value)?.uid ?? null;
   const projects = listProjects(viewerUid);
   const yours = viewerUid
     ? projects.filter((p) => p.owner_uid === viewerUid)

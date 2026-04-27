@@ -43,9 +43,12 @@ function PasswordCard() {
         body: JSON.stringify({ current, next }),
       });
       if (r.ok) {
-        setMsg({ kind: "ok", text: "Password updated" });
+        setMsg({ kind: "ok", text: "Password updated. Sign in again." });
         setCurrent("");
         setNext("");
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 600);
       } else {
         const d = await r.json().catch(() => ({}));
         setMsg({ kind: "err", text: d.error ?? `Failed HTTP ${r.status}` });
