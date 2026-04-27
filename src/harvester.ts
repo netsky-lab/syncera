@@ -92,6 +92,7 @@ Examples of BAD learnings (REJECT, skip):
 ## Rules
 
 - Every learning MUST include at least ONE of: numeric metric, model name, benchmark name, or paper/author.
+- For non-ML domains, a named ingredient, assay, skin model, cell chemistry, standard, guideline, population, or formulation vehicle counts as a named entity even when there is no benchmark.
 - Prefer specific numbers over ranges.  "4.7x reduction" > "significant reduction".
 - Do NOT use the words: "significant", "substantial", "effective", "impressive", "important" (unless quoting).
 - Do NOT invent facts. If source doesn't say it, don't write it.
@@ -460,11 +461,17 @@ async function deepResearch(opts: {
       seenInBatch.add(key);
       unique.push(r);
     }
-    // Stable sort by tier — preserves original order within same tier
-    const tiered = unique
-      .map((r, i) => ({ r, tier: scoreSource(r.url), i }))
-      .sort((a, b) => a.tier - b.tier || a.i - b.i)
-      .map((x) => x.r);
+    const tiered = rankSearchResults(unique, {
+      query,
+      taskGoal,
+      domainProfile,
+    });
+    const dropped = unique.length - tiered.length;
+    if (dropped > 0) {
+      console.log(
+        `[deep]   "${query.slice(0, 60)}" — prefiltered ${dropped}/${unique.length} weak/off-domain candidates`
+      );
+    }
 
     if (tiered.length === 0) {
       console.log(`[deep]   "${query.slice(0, 60)}" — 0 new URLs`);
@@ -792,13 +799,38 @@ export async function extractLearnings(args: {
 
   for (let b = 0; b < batches.length; b++) {
     const batchBlock = batches[b]!.join("");
-    const { object } = await generateJson({
+    let { object } = await generateJson({
       schema: LearningsSchema,
       system: learningsSystem,
       prompt: `${promptPrefix}${batchBlock}`,
       temperature: 0.2,
       endpoint: config.endpoints.harvester,
     });
+    if (object.learnings.length === 0 && contents.length > 0) {
+      console.log(
+        `[extract]   batch ${b + 1}/${batches.length}: 0 learnings — retrying relaxed extraction`
+      );
+      const relaxedSystem = `${learningsSystem}
+
+## Empty-output fallback
+
+The previous extraction pass found no learnings. Re-read the same sources more permissively.
+- Return 2-5 candidate learnings if any source is even partially relevant to the Query and Goal.
+- For R&D, acceptable learnings include named assay methods, application dose standards, skin models, formulation vehicles, penetration mechanisms, limitations, and boundary conditions, even without a numeric result.
+- Keep the SOURCE <index> <url> | prefix.
+- Do not invent values. If no number is present, preserve the named entity and condition exactly.`;
+      const relaxed = await generateJson({
+        schema: LearningsSchema,
+        system: relaxedSystem,
+        prompt: `${promptPrefix}${batchBlock}
+
+Return candidate learnings now. Prefer imperfect but source-grounded findings over an empty list.`,
+        temperature: 0,
+        maxRetries: 1,
+        endpoint: config.endpoints.harvester,
+      });
+      object = relaxed.object;
+    }
     allLearnings.push(...object.learnings);
     allFollowUps.push(...object.follow_up_questions);
     if (batches.length > 1) {
@@ -829,6 +861,127 @@ export async function extractLearnings(args: {
     learnings: dedupedLearnings.slice(0, numLearnings * Math.max(1, batches.length)),
     follow_up_questions: dedupedFollowUps.slice(0, numFollowUps),
   };
+}
+
+function rankSearchResults(
+  results: SearchResult[],
+  opts: { query: string; taskGoal: string; domainProfile: DomainProfile }
+): SearchResult[] {
+  const { query, taskGoal, domainProfile } = opts;
+  const queryTerms = termSet(`${query}\n${taskGoal}`);
+  const domainTerms = domainRelevanceTerms(domainProfile);
+  const scored = results.map((r, i) => {
+    const text = `${r.title}\n${r.snippet}\n${r.url}`.toLowerCase();
+    const queryHits = countHits(text, queryTerms);
+    const domainHits = countHits(text, domainTerms);
+    const tier = scoreSource(r.url);
+    const hostPenalty = weakHostPenalty(r.url, domainProfile);
+    const providerBoost =
+      r.provider === "openalex" || r.provider === "semantic_scholar" ? -8 : 0;
+    return {
+      r,
+      i,
+      tier,
+      queryHits,
+      domainHits,
+      score:
+        tier * 30 +
+        hostPenalty -
+        queryHits * 3 -
+        domainHits * 6 +
+        providerBoost,
+    };
+  });
+
+  const hasDomainMatches = scored.some((x) => x.domainHits > 0);
+  const filtered = scored.filter((x) => {
+    if (weakHostPenalty(x.r.url, domainProfile) >= 80) return false;
+    if (domainProfile.id === "generic") return true;
+    if (!hasDomainMatches) return true;
+    // In specialized domains, a source with zero field-language in title,
+    // snippet, and URL is usually a keyword collision. Keep only top-tier
+    // academic sources when they at least match the query text.
+    if (x.domainHits === 0 && x.tier > 0) return false;
+    if (x.domainHits === 0 && x.queryHits < 2) return false;
+    return true;
+  });
+
+  const poolLimit = positiveIntEnv("HARVEST_CANDIDATE_POOL", 50);
+  return filtered
+    .sort((a, b) => a.score - b.score || a.i - b.i)
+    .slice(0, poolLimit)
+    .map((x) => x.r);
+}
+
+function termSet(text: string): string[] {
+  const stop = new Set([
+    "about", "after", "against", "also", "and", "are", "based", "between",
+    "does", "effect", "effects", "from", "have", "into", "method", "using",
+    "what", "when", "where", "which", "with", "without", "versus", "study",
+  ]);
+  return Array.from(
+    new Set(
+      text
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((t) => t.length >= 4 && !stop.has(t))
+    )
+  ).slice(0, 40);
+}
+
+function countHits(text: string, terms: string[]): number {
+  let n = 0;
+  for (const term of terms) {
+    if (text.includes(term)) n++;
+  }
+  return n;
+}
+
+function domainRelevanceTerms(profile: DomainProfile): string[] {
+  if (profile.id === "chemistry_cosmetics") {
+    return [
+      "active", "absorption", "ascorbic", "caffeine", "confocal", "corneum",
+      "cosmetic", "cream", "dermal", "diffusion", "epidermis", "formulation",
+      "franz", "hplc", "ingredient", "penetration", "percutaneous", "permeation",
+      "raman", "retinoic", "retinol", "skin", "stratum", "sunscreen", "tape",
+      "topical", "vehicle", "vitamin",
+    ];
+  }
+  if (profile.id === "llm_infra") {
+    return [
+      "attention", "benchmark", "cache", "context", "gpu", "inference", "kv",
+      "latency", "llm", "model", "quantization", "throughput", "token", "vllm",
+      "vram",
+    ];
+  }
+  if (profile.id === "battery_materials") {
+    return [
+      "aging", "anode", "battery", "calendar", "capacity", "cathode", "cell",
+      "cycle", "electrolyte", "impedance", "lithium", "retention", "sei",
+      "soc",
+    ];
+  }
+  if (profile.id === "biomedical_clinical") {
+    return [
+      "clinical", "cohort", "dose", "endpoint", "guideline", "intervention",
+      "patient", "population", "safety", "trial", "treatment",
+    ];
+  }
+  return [];
+}
+
+function weakHostPenalty(url: string, profile: DomainProfile): number {
+  const u = url.toLowerCase();
+  if (/amazon|ebay|walmart|shopify|\/shop\/|\/product\/|\/collections?\//.test(u)) {
+    return 100;
+  }
+  if (profile.id === "chemistry_cosmetics") {
+    if (/healthline|webmd|byrdie|stylecraze|makeupalley|skincare|beauty|allure/.test(u)) {
+      return 80;
+    }
+  }
+  if (/quora|pinterest|facebook|instagram|tiktok/.test(u)) return 80;
+  return 0;
 }
 
 // --- utils ---
