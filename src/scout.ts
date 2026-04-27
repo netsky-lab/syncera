@@ -127,16 +127,25 @@ export async function scout(topic: string): Promise<ScoutDigest | null> {
   // Shallow harvest: one page per query, tier-sort, top 3 URLs each.
   const allContents: ScoutContent[] = [];
   let totalFetched = 0;
-  for (const query of queries) {
+  for (let queryIndex = 0; queryIndex < queries.length; queryIndex++) {
+    const query = queries[queryIndex]!;
+    console.log(
+      `[scout] search ${queryIndex + 1}/${queries.length}: ${query.slice(0, 90)}`
+    );
     const paged = await searchAll(query, 15).catch(() => [] as any[]);
     const tiered = sortByTier(paged, (r: any) => r.url);
     const top = tiered.slice(0, 3);
-    if (top.length === 0) continue;
+    if (top.length === 0) {
+      console.log(`[scout]   no sources`);
+      continue;
+    }
+    console.log(`[scout]   reading ${top.length} sources`);
     const reads = await readUrls(
       top.map((r: any) => r.url),
       3,
       15000
     );
+    let accepted = 0;
     for (let i = 0; i < reads.length; i++) {
       const read = reads[i];
       const source = top[i];
@@ -148,8 +157,10 @@ export async function scout(topic: string): Promise<ScoutDigest | null> {
           query,
         });
         totalFetched++;
+        accepted++;
       }
     }
+    console.log(`[scout]   accepted ${accepted}/${top.length} sources`);
   }
   console.log(`[scout] scraped ${totalFetched} sources across ${queries.length} queries`);
 

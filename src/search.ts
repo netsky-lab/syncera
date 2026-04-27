@@ -73,7 +73,7 @@ export async function searchArxiv(
   const encoded = encodeURIComponent(query);
   const url = `http://export.arxiv.org/api/query?search_query=all:${encoded}&max_results=${maxResults}&sortBy=relevance`;
 
-  const resp = await fetch(url);
+  const resp = await fetchWithTimeout(url, "arxiv");
   if (!resp.ok) {
     console.warn(`[arxiv] Error ${resp.status}`);
     return [];
@@ -129,7 +129,7 @@ export async function searchOpenAlex(
   const encoded = encodeURIComponent(query);
   const url = `https://api.openalex.org/works?search=${encoded}&per-page=${maxResults}&filter=has_abstract:true`;
 
-  const resp = await fetch(url, {
+  const resp = await fetchWithTimeout(url, "openalex", {
     headers: {
       Accept: "application/json",
       "User-Agent": "research-lab/1.0 (mailto:research-lab@local)",
@@ -185,7 +185,7 @@ export async function searchOpenReview(
   const encoded = encodeURIComponent(query);
   const url = `https://api2.openreview.net/notes/search?term=${encoded}&source=forum&type=all&limit=${maxResults}`;
 
-  const resp = await fetch(url, {
+  const resp = await fetchWithTimeout(url, "openreview", {
     headers: { Accept: "application/json" },
   });
   if (!resp.ok) {
@@ -218,7 +218,9 @@ export async function searchSemanticScholar(
   const encoded = encodeURIComponent(simplified);
   const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encoded}&limit=${maxResults}&fields=title,abstract,url,year,citationCount`;
 
-  const resp = await fetch(url, { headers: { Accept: "application/json" } });
+  const resp = await fetchWithTimeout(url, "semantic_scholar", {
+    headers: { Accept: "application/json" },
+  });
 
   if (!resp.ok) {
     if (resp.status === 429) {
@@ -374,6 +376,27 @@ function extractUrls(text: string): string[] {
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetchWithTimeout(
+  url: string,
+  provider: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  const timeoutMs = positiveIntEnv("SEARCH_TIMEOUT_MS", 12_000);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err: any) {
+    const message =
+      err?.name === "AbortError"
+        ? `timeout after ${timeoutMs}ms`
+        : err?.message ?? String(err);
+    throw new Error(`${provider}: ${message}`);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function positiveIntEnv(name: string, fallback: number): number {
