@@ -29,6 +29,7 @@ const PHASES = [
   "verify",
   "analyze",
   "synth",
+  "playbook",
 ] as const;
 const PHASE_LABELS: Record<string, string> = {
   scout: "Scouting",
@@ -38,6 +39,7 @@ const PHASE_LABELS: Record<string, string> = {
   verify: "Verifying",
   analyze: "Analyzing",
   synth: "Synthesizing",
+  playbook: "Compiling playbook",
   refine: "Refining",
 };
 

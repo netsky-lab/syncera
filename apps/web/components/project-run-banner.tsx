@@ -27,7 +27,9 @@ const PHASE_LABEL: Record<string, string> = {
   verify: "Verifying",
   analyze: "Analyzing",
   synth: "Synthesizing",
+  playbook: "Compiling playbook",
   refine: "Refining",
+  "refine-playbook": "Compiling playbook",
 };
 
 function elapsedMin(ms: number): string {

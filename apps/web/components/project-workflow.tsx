@@ -27,6 +27,7 @@ import {
 import type { ProjectDetail, ProjectSummary } from "@/lib/projects";
 import { ComparePicker } from "@/components/compare-picker";
 import { ForkButton } from "@/components/fork-button";
+import { Markdown } from "@/components/markdown";
 import { ProjectAdminActions } from "@/components/project-admin-actions";
 import { ProjectDocument } from "@/components/project-document";
 import { ProjectRerunButton } from "@/components/project-rerun-button";
@@ -42,6 +43,7 @@ type Branches = {
 
 type TabId =
   | "brief"
+  | "playbook"
   | "claims"
   | "evidence"
   | "debt"
@@ -91,11 +93,12 @@ type EvidenceRow = {
 
 const tabs: { id: TabId; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { id: "report", label: "Report", icon: FileText },
+  { id: "playbook", label: "Playbook", icon: ListChecks },
   { id: "claims", label: "Claims", icon: Network },
   { id: "evidence", label: "Evidence", icon: Quote },
   { id: "debt", label: "Debt", icon: AlertTriangle },
   { id: "cognition", label: "Cognition", icon: Brain },
-  { id: "brief", label: "Brief", icon: ListChecks },
+  { id: "brief", label: "Brief", icon: FileText },
   { id: "sources", label: "Sources", icon: Library },
   { id: "coverage", label: "Coverage", icon: Activity },
   { id: "versions", label: "Versions", icon: GitBranch },
@@ -266,6 +269,7 @@ function phaseRows(project: ProjectDetail) {
     ["Analyze", Boolean(project.analysisReport?.answers?.length)],
     ["Contradictions", Boolean(project.epistemicGraph?.contradiction_pass)],
     ["Synthesis", Boolean(project.report)],
+    ["Playbook", Boolean(project.playbookMarkdown || project.playbook)],
   ] as const;
 }
 
@@ -2817,6 +2821,32 @@ export function ProjectWorkflow({
               </section>
             )}
 
+            {activeTab === "playbook" && (
+              <section className="min-w-0 rounded-lg border border-fg/[0.06] bg-ink-800 p-4 sm:p-5 card-warm">
+                <div className="mb-4 flex min-w-0 items-center justify-between gap-3">
+                  <div>
+                    <div className="micro text-fg-muted">
+                      Knowledge-to-playbook
+                    </div>
+                    <div className="mt-1 text-[13px] text-fg-muted">
+                      Rules, checklists, decision trees, evals, failure modes,
+                      and templates compiled from verified evidence.
+                    </div>
+                  </div>
+                </div>
+                {project.playbookMarkdown ? (
+                  <div className="prose-reader min-w-0 text-[14px] leading-relaxed">
+                    <Markdown content={project.playbookMarkdown} />
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-dashed border-fg/[0.08] bg-ink-900 p-6 text-center text-[13px] text-fg-muted">
+                    No playbook generated yet. Re-run the project to compile
+                    PLAYBOOK.md from verified evidence.
+                  </div>
+                )}
+              </section>
+            )}
+
             {activeTab === "report" && (
               <ProjectDocument
                 project={project}
@@ -2846,6 +2876,13 @@ export function ProjectWorkflow({
                 >
                   <FileText size={14} />
                   Markdown
+                </a>
+                <a
+                  href={`/api/projects/${slug}/playbook?download=1`}
+                  className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-fg/[0.06] bg-ink-900 px-3 text-[12px] font-medium transition hover:bg-ink-700"
+                >
+                  <ListChecks size={14} />
+                  Playbook
                 </a>
                 <a
                   href={`/api/projects/${slug}/audit?download=1`}

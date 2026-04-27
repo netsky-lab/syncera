@@ -54,6 +54,8 @@ export interface ProjectDetail {
   analysisReport: any | null;
   // shared
   report: string | null;
+  playbook: any | null;
+  playbookMarkdown: string | null;
   sources: any | null;
   units: any[]; // per-task (old) or per-subquestion (new) source index files
   verification: any | null;
@@ -305,6 +307,11 @@ export function getProject(
   const analysisReport = readJson(join(dir, "analysis_report.json"));
   const reportPath = join(dir, "REPORT.md");
   const report = existsSync(reportPath) ? readFileSync(reportPath, "utf-8") : null;
+  const playbook = readJson(join(dir, "playbook.json"));
+  const playbookPath = join(dir, "PLAYBOOK.md");
+  const playbookMarkdown = existsSync(playbookPath)
+    ? readFileSync(playbookPath, "utf-8")
+    : null;
   const sources = readJson(join(dir, "sources", "index.json"));
   const verification = readJson(join(dir, "verification.json"));
   const usageSummary = readJson(join(dir, "llm_usage_summary.json"));
@@ -353,6 +360,8 @@ export function getProject(
     facts: Array.isArray(facts) ? facts : [],
     analysisReport,
     report,
+    playbook,
+    playbookMarkdown,
     sources,
     units,
     verification,

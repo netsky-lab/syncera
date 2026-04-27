@@ -7,6 +7,7 @@ import { extractEvidence } from "./evidence";
 import { verifyAll } from "./verifier";
 import { analyze } from "./analyzer";
 import { synthesize } from "./synthesizer";
+import { compilePlaybook } from "./playbook";
 import { runRelevancePhase } from "./relevance";
 import { writeEpistemicGraph } from "./epistemic";
 import { resolveContradictions } from "./contradictions";
@@ -279,6 +280,30 @@ async function main() {
     `[phase:synth] Done in ${((Date.now() - t4) / 1000).toFixed(1)}s\n`
   );
 
+  // --- Phase 5.5: Knowledge-to-Playbook Compiler ---
+  // Turns verified research into operational knowledge: rules, checklists,
+  // decision trees, evals, failure modes, interventions, and templates.
+  const playbookPath = join(projectDir, "playbook.json");
+  const shouldRebuildPlaybook =
+    process.argv.includes("--re-playbook") ||
+    process.argv.includes("--re-evidence") ||
+    process.argv.includes("--re-verify") ||
+    process.argv.includes("--re-analyze") ||
+    process.argv.includes("--re-epistemic") ||
+    process.argv.includes("--re-contradictions") ||
+    !existsSync(playbookPath);
+  if (!shouldRebuildPlaybook) {
+    console.log("[phase:playbook] Using existing playbook.json");
+  } else {
+    setLlmTelemetryPhase("playbook");
+    console.log("[phase:playbook] Compiling operational playbook...");
+    const tp = Date.now();
+    await compilePlaybook(plan, projectDir);
+    console.log(
+      `[phase:playbook] Done in ${((Date.now() - tp) / 1000).toFixed(1)}s\n`
+    );
+  }
+
   // --- Phase 6: Refinement (optional, --refine) ---
   // Iterative gap-filling: if some questions came back insufficient/gaps_critical,
   // run targeted re-harvest + re-extract + re-verify + re-analyze + re-synth
@@ -309,6 +334,8 @@ async function main() {
       await resolveContradictions({ projectDir, force: true });
       setLlmTelemetryPhase("refine-synth");
       await synthesize(plan, projectDir);
+      setLlmTelemetryPhase("refine-playbook");
+      await compilePlaybook(plan, projectDir);
       console.log(
         `[phase:refine-downstream] Done in ${((Date.now() - t5) / 1000).toFixed(1)}s — facts now: ${facts2.length}\n`
       );
@@ -347,6 +374,7 @@ async function main() {
     }),
     "",
     `## Report: [REPORT.md](./REPORT.md)`,
+    `## Playbook: [PLAYBOOK.md](./PLAYBOOK.md)`,
   ].join("\n");
   writeFileSync(join(projectDir, "README.md"), readme);
 

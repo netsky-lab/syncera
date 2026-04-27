@@ -14,7 +14,7 @@ type Run = {
 };
 
 // Map pipeline backend phase → 6 visible stages from design.
-// Backend: scout / plan / harvest / evidence / verify / analyze / synth / refine
+// Backend: scout / plan / harvest / evidence / verify / analyze / synth / playbook / refine
 const STAGE_INDEX: Record<string, number> = {
   scout: 0,
   plan: 1,
@@ -24,6 +24,7 @@ const STAGE_INDEX: Record<string, number> = {
   verify: 3,
   analyze: 4,
   synth: 5,
+  playbook: 5,
   refine: 5,
 };
 

@@ -34,6 +34,7 @@ describe("phaseFromLine", () => {
     expect(phaseFromLine("[phase:verify] Fact-checking")).toBe("verify");
     expect(phaseFromLine("[phase:analyze] Synthesizing answers")).toBe("analyze");
     expect(phaseFromLine("[phase:synth] Generating final report")).toBe("synth");
+    expect(phaseFromLine("[phase:playbook] Compiling operational playbook")).toBe("playbook");
     expect(phaseFromLine("[phase:scout] Surveying literature")).toBe("scout");
     expect(phaseFromLine("[phase:refine] Targeting weak questions")).toBe("refine");
   });
