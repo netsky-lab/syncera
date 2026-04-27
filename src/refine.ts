@@ -73,11 +73,15 @@ export async function refine(
 
   const sourcesDir = join(projectDir, "sources");
   const contentDir = join(sourcesDir, "content");
+  const expectedUnitIds = new Set(
+    plan.questions.flatMap((q) => q.subquestions.map((s) => s.id))
+  );
   const globalVisited = new Set<string>();
   // Seed globalVisited from existing source files
-  for (const f of readdirSync(sourcesDir).filter((f) =>
-    /^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)
-  )) {
+  for (const f of readdirSync(sourcesDir).filter((f) => {
+    if (!/^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)) return false;
+    return expectedUnitIds.has(f.replace(/\.json$/i, ""));
+  })) {
     try {
       const idx: SourceIndex = JSON.parse(
         readFileSync(join(sourcesDir, f), "utf-8")
@@ -240,9 +244,10 @@ Generate 2-3 narrow queries targeting these gaps.`,
   }
 
   // Update aggregate sources/index.json
-  const allFiles = readdirSync(sourcesDir).filter((f) =>
-    /^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)
-  );
+  const allFiles = readdirSync(sourcesDir).filter((f) => {
+    if (!/^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)) return false;
+    return expectedUnitIds.has(f.replace(/\.json$/i, ""));
+  });
   let totalSources = 0;
   let totalLearnings = 0;
   const byProvider: Record<string, number> = {};

@@ -234,10 +234,14 @@ export async function runRelevancePhase(
   const { concurrency = 5, force = false } = opts;
   const sourcesDir = join(projectDir, "sources");
   const contentDir = join(sourcesDir, "content");
-
-  const sourceFiles = readdirSync(sourcesDir).filter((f) =>
-    /^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)
+  const expectedUnitIds = new Set(
+    plan.questions.flatMap((q) => q.subquestions.map((s) => s.id))
   );
+
+  const sourceFiles = readdirSync(sourcesDir).filter((f) => {
+    if (!/^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)) return false;
+    return expectedUnitIds.has(f.replace(/\.json$/i, ""));
+  });
 
   let totalChecked = 0;
   let accepted = 0;

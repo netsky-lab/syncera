@@ -149,19 +149,25 @@ function debtSeverity(coverage: string): "low" | "medium" | "high" {
   return "low";
 }
 
-function sourceFiles(projectDir: string): SourceIndex[] {
+function sourceFiles(projectDir: string, plan?: ResearchPlan): SourceIndex[] {
   const dir = join(projectDir, "sources");
   if (!existsSync(dir)) return [];
+  const expectedUnitIds = plan
+    ? new Set(plan.questions.flatMap((q) => q.subquestions.map((s) => s.id)))
+    : null;
   return readdirSync(dir)
-    .filter((f) => /^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f))
+    .filter((f) => {
+      if (!/^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)) return false;
+      return expectedUnitIds ? expectedUnitIds.has(f.replace(/\.json$/i, "")) : true;
+    })
     .sort()
     .map((f) => readJson<SourceIndex | null>(join(dir, f), null))
     .filter(Boolean) as SourceIndex[];
 }
 
-function sourceMetaByUrl(projectDir: string): Map<string, SourceMeta> {
+function sourceMetaByUrl(projectDir: string, plan: ResearchPlan): Map<string, SourceMeta> {
   const byUrl = new Map<string, SourceMeta>();
-  for (const index of sourceFiles(projectDir)) {
+  for (const index of sourceFiles(projectDir, plan)) {
     for (const result of index.results ?? []) {
       if (!result.url || byUrl.has(result.url)) continue;
       byUrl.set(result.url, {
@@ -196,7 +202,7 @@ export function buildEpistemicGraph(args: {
     { answers: [], cross_question_tensions: [], overall_summary: "" }
   );
   const sourcesIndex = readJson<any>(join(projectDir, "sources", "index.json"), null);
-  const sourceMeta = sourceMetaByUrl(projectDir);
+  const sourceMeta = sourceMetaByUrl(projectDir, plan);
   const sourceStatus = readSourceStatus(projectDir);
   const verByFact = new Map(
     (verificationReport.verifications ?? []).map((v: Verification) => [v.fact_id, v])

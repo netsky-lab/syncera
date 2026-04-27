@@ -247,14 +247,18 @@ export async function extractEvidence(
   const sourcesDir = join(projectDir, "sources");
   const contentDir = join(sourcesDir, "content");
   const sourceStatus = readSourceStatus(projectDir);
+  const expectedUnitIds = new Set(
+    plan.questions.flatMap((q) => q.subquestions.map((s) => s.id))
+  );
   // Subquestion cache files — the LLM picks the ID shape, so accept any
   // filename that looks like a research-unit: starts with Q or SQ (any
   // case), has digits + optional separators + digits, and ends in .json.
   // Known shapes so far: Q1.json, Q1.1.json, Q1-S1.json, SQ1.1.json.
   // Also accept legacy T<n>.json (hypothesis-first re-runs).
-  const sourceFiles = readdirSync(sourcesDir).filter(
-    (f) => /^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)
-  );
+  const sourceFiles = readdirSync(sourcesDir).filter((f) => {
+    if (!/^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)) return false;
+    return expectedUnitIds.has(f.replace(/\.json$/i, ""));
+  });
 
   // Run subquestions in parallel with bounded, provider-aware concurrency.
   const EVIDENCE_CONCURRENCY = config.concurrency.evidence;

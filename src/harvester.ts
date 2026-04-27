@@ -13,7 +13,7 @@ import {
 } from "./domain-profile";
 import type { SearchResult, SourceIndex } from "./schemas/source";
 import type { ResearchPlan, ResearchQuestion, Subquestion } from "./schemas/plan";
-import { writeFileSync, mkdirSync, existsSync } from "fs";
+import { writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from "fs";
 import { join } from "path";
 
 interface HarvesterInput {
@@ -163,6 +163,20 @@ export async function harvest(input: HarvesterInput): Promise<SourceIndex[]> {
   for (const q of plan.questions) {
     for (const sq of q.subquestions) {
       allUnits.push({ question: q, subquestion: sq });
+    }
+  }
+  const expectedUnitIds = new Set(allUnits.map((u) => u.subquestion.id));
+  if (input.force) {
+    for (const file of readdirSync(sourcesDir)) {
+      if (file === "index.json" || /^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(file)) {
+        rmSync(join(sourcesDir, file), { force: true });
+      }
+    }
+  } else {
+    for (const file of readdirSync(sourcesDir)) {
+      if (!/^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(file)) continue;
+      const id = file.replace(/\.json$/i, "");
+      if (!expectedUnitIds.has(id)) rmSync(join(sourcesDir, file), { force: true });
     }
   }
 
@@ -504,7 +518,7 @@ async function deepResearch(opts: {
           // Truncate per-source content to keep LLM prefill time manageable
           // (primary papers can be 30-80kB; at 10 sources/query that's often
           // hundreds of kB per call).
-          fullContents.push(read.content.slice(0, 15000));
+          fullContents.push(read.content.slice(0, positiveIntEnv("HARVEST_CONTENT_CHARS", 8000)));
 
           const hash = hashUrl(src.url);
           writeFileSync(
@@ -595,7 +609,7 @@ async function deepResearch(opts: {
         };
         globalVisited.add(`arxiv:${newIds[i]}`);
         snowballSources.push(src);
-        snowballContents.push(read.content.slice(0, 15000));
+        snowballContents.push(read.content.slice(0, positiveIntEnv("HARVEST_CONTENT_CHARS", 8000)));
         // Persist content to disk like the main loop does
         const hash = hashUrl(src.url);
         writeFileSync(
