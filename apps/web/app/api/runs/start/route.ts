@@ -85,7 +85,7 @@ export async function POST(request: Request) {
     CONCURRENCY_EVIDENCE:
       effectiveProvider === "gemini"
         ? String(Math.min(parallelism, 32))
-        : String(Math.min(parallelism, 3)),
+        : String(Math.min(parallelism, 2)),
     CONCURRENCY_ANALYZER:
       effectiveProvider === "gemini"
         ? String(Math.min(parallelism, 24))
