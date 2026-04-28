@@ -15,7 +15,7 @@ import { config } from "./config";
 import { initLlmTelemetry, setLlmTelemetryPhase } from "./llm";
 import type { ResearchPlan } from "./schemas/plan";
 import type { Fact } from "./schemas/fact";
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from "fs";
 import { join } from "path";
 
 const PROJECTS_DIR = join(import.meta.dir, "..", "projects");
@@ -26,6 +26,93 @@ function slugify(text: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 80);
+}
+
+function readJson<T = any>(path: string): T | null {
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+function writeJson(path: string, value: any) {
+  writeFileSync(path, JSON.stringify(value, null, 2));
+}
+
+function sourceUnits(projectDir: string): any[] {
+  const sourcesDir = join(projectDir, "sources");
+  if (!existsSync(sourcesDir)) return [];
+  const units: any[] = [];
+  for (const file of readdirSync(sourcesDir).sort()) {
+    if (!/^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(file)) continue;
+    const unit = readJson(join(sourcesDir, file));
+    if (unit) units.push(unit);
+  }
+  return units;
+}
+
+function writeSourcesSummary(projectDir: string) {
+  const units = sourceUnits(projectDir);
+  const providerCounts: Record<string, number> = {};
+  let totalSources = 0;
+  let totalLearnings = 0;
+  for (const unit of units) {
+    totalSources += Array.isArray(unit.results) ? unit.results.length : 0;
+    totalLearnings += Array.isArray(unit.learnings) ? unit.learnings.length : 0;
+    for (const result of unit.results ?? []) {
+      const provider = String(result.provider ?? "unknown");
+      providerCounts[provider] = (providerCounts[provider] ?? 0) + 1;
+    }
+  }
+  const existing = readJson(join(projectDir, "sources", "index.json")) ?? {};
+  writeJson(join(projectDir, "sources.json"), {
+    ...(typeof existing === "object" && existing ? existing : {}),
+    total_sources: existing?.total_sources ?? totalSources,
+    total_learnings: existing?.total_learnings ?? totalLearnings,
+    by_provider: existing?.by_provider ?? providerCounts,
+    units: units.map((unit) => ({
+      question_id: unit.question_id ?? unit.hypothesis_id ?? null,
+      subquestion_id: unit.subquestion_id ?? unit.task_id ?? null,
+      sources: Array.isArray(unit.results) ? unit.results.length : 0,
+      learnings: Array.isArray(unit.learnings) ? unit.learnings.length : 0,
+      accepted_sources: (unit.results ?? []).filter((r: any) => {
+        const match = r.relevance?.domain_match;
+        return !match || match === "direct" || match === "adjacent";
+      }).length,
+    })),
+    updated_at: new Date().toISOString(),
+  });
+}
+
+function writeAnalysisAlias(projectDir: string) {
+  const analysis = readJson(join(projectDir, "analysis_report.json"));
+  if (analysis) writeJson(join(projectDir, "analysis.json"), analysis);
+}
+
+function writeEpistemicSidecars(projectDir: string) {
+  const graph = readJson<any>(join(projectDir, "epistemic_graph.json"));
+  if (!graph) return;
+  writeJson(join(projectDir, "research_debt.json"), {
+    research_debt: graph.research_debt ?? [],
+    summary: {
+      total: (graph.research_debt ?? []).length,
+      high: (graph.research_debt ?? []).filter((d: any) => d.severity === "high").length,
+      medium: (graph.research_debt ?? []).filter((d: any) => d.severity === "medium").length,
+      low: (graph.research_debt ?? []).filter((d: any) => d.severity === "low").length,
+    },
+    updated_at: new Date().toISOString(),
+  });
+  writeJson(join(projectDir, "contradictions.json"), {
+    contradictions: graph.contradictions ?? [],
+    contradiction_pass: graph.contradiction_pass ?? null,
+    summary: {
+      total: (graph.contradictions ?? []).length,
+      candidates: graph.contradiction_pass?.candidates ?? null,
+    },
+    updated_at: new Date().toISOString(),
+  });
 }
 
 async function main() {
@@ -94,6 +181,7 @@ async function main() {
   } else if (existsSync(scoutPath) && !process.argv.includes("--rescout")) {
     console.log("[phase:scout] Using existing scout_digest.json");
     scoutDigest = JSON.parse(readFileSync(scoutPath, "utf-8"));
+    writeJson(join(projectDir, "scout.json"), scoutDigest);
   } else if (!existsSync(join(projectDir, "plan.json")) || process.argv.includes("--rescout")) {
     setLlmTelemetryPhase("scout");
     console.log("[phase:scout] Surveying literature…");
@@ -101,6 +189,7 @@ async function main() {
     scoutDigest = await scout(topic);
     if (scoutDigest) {
       writeFileSync(scoutPath, JSON.stringify(scoutDigest, null, 2));
+      writeJson(join(projectDir, "scout.json"), scoutDigest);
       console.log(
         `[phase:scout] Done in ${((Date.now() - ts) / 1000).toFixed(1)}s\n`
       );
@@ -146,8 +235,10 @@ async function main() {
     console.log(
       `[phase:harvest] User ingestion done in ${((Date.now() - t1) / 1000).toFixed(1)}s — ${res.ingested} ingested, ${res.failed} failed\n`
     );
+    writeSourcesSummary(projectDir);
   } else if (existsSync(sourcesIndex) && !process.argv.includes("--reharvest")) {
     console.log("[phase:harvest] Using existing sources");
+    writeSourcesSummary(projectDir);
   } else {
     setLlmTelemetryPhase("harvest");
     console.log("[phase:harvest] Collecting sources...");
@@ -161,6 +252,7 @@ async function main() {
     console.log(
       `[phase:harvest] Done in ${((Date.now() - t1) / 1000).toFixed(1)}s — ${total} sources\n`
     );
+    writeSourcesSummary(projectDir);
   }
 
   // --- Phase 2.5: Relevance gate ---
@@ -177,6 +269,11 @@ async function main() {
       concurrency: config.concurrency.relevance,
       force: process.argv.includes("--re-relevance"),
     });
+    writeJson(join(projectDir, "relevance.json"), {
+      ...rel,
+      updated_at: new Date().toISOString(),
+    });
+    writeSourcesSummary(projectDir);
     console.log(
       `[phase:relevance] Done in ${((Date.now() - tr) / 1000).toFixed(1)}s — ${rel.accepted}/${rel.totalChecked} on-domain${rel.weakSubquestions.length ? `, weak: ${rel.weakSubquestions.join(",")}` : ""}\n`
     );
@@ -215,11 +312,13 @@ async function main() {
   const analysisPath = join(projectDir, "analysis_report.json");
   if (existsSync(analysisPath) && !process.argv.includes("--re-analyze")) {
     console.log("[phase:analyze] Using existing analysis_report.json");
+    writeAnalysisAlias(projectDir);
   } else {
     setLlmTelemetryPhase("analyze");
     console.log("[phase:analyze] Synthesizing per-question answers...");
     const t3 = Date.now();
     await analyze(plan, projectDir);
+    writeAnalysisAlias(projectDir);
     console.log(
       `[phase:analyze] Done in ${((Date.now() - t3) / 1000).toFixed(1)}s\n`
     );
@@ -239,10 +338,12 @@ async function main() {
     !existsSync(epistemicPath);
   if (!shouldRebuildEpistemic) {
     console.log("[phase:epistemic] Using existing epistemic_graph.json");
+    writeEpistemicSidecars(projectDir);
   } else {
     console.log("[phase:epistemic] Building claim lifecycle graph...");
     const te = Date.now();
     const graph = writeEpistemicGraph({ plan, projectDir });
+    writeEpistemicSidecars(projectDir);
     console.log(
       `[phase:epistemic] Done in ${((Date.now() - te) / 1000).toFixed(1)}s — ${graph.claims.length} claims, ${graph.research_debt.length} debt items, ${graph.contradictions.length} contradictions\n`
     );
@@ -266,6 +367,7 @@ async function main() {
       projectDir,
       force: process.argv.includes("--re-contradictions") || shouldRebuildEpistemic,
     });
+    writeEpistemicSidecars(projectDir);
     console.log(
       `[phase:contradictions] Done in ${((Date.now() - tc) / 1000).toFixed(1)}s — ${result.candidates} candidates, ${result.contradictions} contradictions\n`
     );
@@ -329,9 +431,11 @@ async function main() {
       await verifyAll({ facts: factsForVerify, projectDir, concurrency: config.concurrency.verifier });
       setLlmTelemetryPhase("refine-analyze");
       await analyze(plan, projectDir);
+      writeAnalysisAlias(projectDir);
       writeEpistemicGraph({ plan, projectDir });
       setLlmTelemetryPhase("refine-contradictions");
       await resolveContradictions({ projectDir, force: true });
+      writeEpistemicSidecars(projectDir);
       setLlmTelemetryPhase("refine-synth");
       await synthesize(plan, projectDir);
       setLlmTelemetryPhase("refine-playbook");

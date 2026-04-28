@@ -33,7 +33,9 @@ Self-hosted stack: web UI + REST API + pipeline runner on a single host. The web
    #   GEMMA_BASE_URL=<your LLM endpoint>
    # OPTIONAL:
    #   ADMIN_EMAIL / ADMIN_PASSWORD to seed the bootstrap admin via env;
-   #   otherwise the first /signup becomes admin.
+   #   or BOOTSTRAP_TOKEN to allow exactly the intended first admin signup.
+   #   In production, first signup is rejected unless one of these bootstrap
+   #   controls is configured.
    ```
 
 3. Check the docker socket GID on the host — the web container's `app`
@@ -60,7 +62,9 @@ Self-hosted stack: web UI + REST API + pipeline runner on a single host. The web
    ```
 
 6. Open the domain. If `ADMIN_EMAIL/PASSWORD` was set, sign in with those.
-   Otherwise hit `/signup` — the first account becomes admin.
+   If using `BOOTSTRAP_TOKEN`, pass it during the first controlled signup
+   flow or create the admin through the file store before opening public
+   traffic. Do not leave first-admin signup publicly unprotected.
 
 ## Running research
 
@@ -123,6 +127,9 @@ artifacts) is kept across rebuilds.
 
 - Session cookies require `SESSION_SECRET` to be set. If unset, middleware
   falls back to Basic Auth — fine for dev, not for prod.
+- Production first-admin creation requires either `ADMIN_EMAIL` /
+  `ADMIN_PASSWORD` or `BOOTSTRAP_TOKEN`. This prevents the first random
+  visitor from claiming the admin role.
 - Passwords are scrypt-hashed (N=16384) in `../data/users.json`. API keys
   are SHA-256 hashed in `../data/api_keys.json`. Neither store is
   encrypted at rest — put the volume on an encrypted filesystem if that

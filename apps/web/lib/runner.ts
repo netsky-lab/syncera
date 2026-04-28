@@ -71,6 +71,22 @@ interface ActiveRun {
   lastLine: string | null;
 }
 
+export interface RunProgress {
+  questions: number;
+  subquestions: number;
+  sources: number;
+  learnings: number;
+  facts: number;
+  verified: number;
+  rejected: number;
+  claims: number;
+  debt: number;
+  contradictions: number;
+  llmCalls: number;
+  tokens: number;
+  costUsd: number | null;
+}
+
 const runs = new Map<string, ActiveRun>();
 
 function hasAttachedDockerRunClient(runId: string): boolean {
@@ -333,6 +349,92 @@ export function slugify(text: string): string {
 export function phaseFromLine(line: string): string | null {
   const m = line.match(/\[phase:(\w+)\]/);
   return m?.[1] ?? null;
+}
+
+function readJson(path: string): any | null {
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+function ownerForSlug(slug: string): string | null {
+  try {
+    return readFileSync(join(repoRootContainerPath(), slug, ".owner"), "utf-8").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function sourceUnits(slug: string): any[] {
+  const sourcesDir = join(repoRootContainerPath(), slug, "sources");
+  if (!existsSync(sourcesDir)) return [];
+  const units: any[] = [];
+  for (const file of readdirSync(sourcesDir)) {
+    if (!/^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(file)) continue;
+    const unit = readJson(join(sourcesDir, file));
+    if (unit) units.push(unit);
+  }
+  return units;
+}
+
+function runProgress(slug: string): RunProgress {
+  const root = join(repoRootContainerPath(), slug);
+  const plan = readJson(join(root, "plan.json"));
+  const units = sourceUnits(slug);
+  const sourcesSummary =
+    readJson(join(root, "sources", "index.json")) ?? readJson(join(root, "sources.json"));
+  const facts = readJson(join(root, "facts.json"));
+  const verification = readJson(join(root, "verification.json"));
+  const graph = readJson(join(root, "epistemic_graph.json"));
+  const usage = readJson(join(root, "llm_usage_summary.json"));
+
+  const computedSources = units.reduce(
+    (acc, unit) => {
+      acc.sources += Array.isArray(unit.results) ? unit.results.length : 0;
+      acc.learnings += Array.isArray(unit.learnings) ? unit.learnings.length : 0;
+      return acc;
+    },
+    { sources: 0, learnings: 0 }
+  );
+  const totalFacts = Array.isArray(facts) ? facts.length : 0;
+  const verSummary = verification?.summary ?? {};
+  const verified =
+    typeof verSummary.verified === "number"
+      ? verSummary.verified
+      : Array.isArray(verification?.verifications)
+        ? verification.verifications.filter((v: any) => v.verdict === "verified").length
+        : 0;
+  const rejected =
+    typeof verSummary.rejected === "number"
+      ? verSummary.rejected
+      : verSummary.total != null
+        ? Math.max(0, Number(verSummary.total) - verified)
+        : 0;
+  const totals = usage?.totals ?? {};
+
+  return {
+    questions: Array.isArray(plan?.questions) ? plan.questions.length : 0,
+    subquestions: Array.isArray(plan?.questions)
+      ? plan.questions.reduce((n: number, q: any) => n + (q.subquestions?.length ?? 0), 0)
+      : 0,
+    sources: Number(sourcesSummary?.total_sources ?? computedSources.sources ?? 0),
+    learnings: Number(sourcesSummary?.total_learnings ?? computedSources.learnings ?? 0),
+    facts: totalFacts,
+    verified,
+    rejected,
+    claims: Array.isArray(graph?.claims) ? graph.claims.length : totalFacts,
+    debt: Array.isArray(graph?.research_debt) ? graph.research_debt.length : 0,
+    contradictions: Array.isArray(graph?.contradictions) ? graph.contradictions.length : 0,
+    llmCalls: Number(totals.calls ?? 0),
+    tokens: Number(totals.total_tokens ?? 0),
+    costUsd:
+      typeof totals.estimated_cost_usd === "number"
+        ? totals.estimated_cost_usd
+        : null,
+  };
 }
 
 export function startRun(
@@ -793,6 +895,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
   phase: string | null;
   lastLine: string | null;
   owner_uid: string | null;
+  progress: RunProgress;
 }[] {
   ensureOrphansReattached();
   // Visibility: you see runs you own + runs on projects you can view.
@@ -819,6 +922,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
         phase: r.lastPhase,
         lastLine: r.lastLine,
         owner_uid: r.ownerUid,
+        progress: runProgress(r.slug),
       };
     });
 
@@ -831,8 +935,9 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
       if (!slugDir.isDirectory()) continue;
       const runsDir = join(repoRootContainerPath(), slugDir.name, "runs");
       if (!existsSync(runsDir)) continue;
+      const ownerUid = ownerForSlug(slugDir.name);
       // Gate by project visibility — runs belong to the project.
-      if (!canSeeRun(null, slugDir.name)) continue;
+      if (!canSeeRun(ownerUid, slugDir.name)) continue;
       for (const f of readdirSync(runsDir)) {
         if (!f.endsWith(".meta.json")) continue;
         try {
@@ -879,7 +984,8 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
             exitCode: m.exitCode ?? null,
             phase,
             lastLine,
-            owner_uid: null,
+            owner_uid: ownerUid,
+            progress: runProgress(slugDir.name),
           });
         } catch {}
       }

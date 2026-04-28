@@ -11,6 +11,19 @@ type Run = {
   startedAt: number;
   phase: string | null;
   lastLine: string | null;
+  progress?: {
+    questions: number;
+    subquestions: number;
+    sources: number;
+    learnings: number;
+    facts: number;
+    verified: number;
+    rejected: number;
+    debt: number;
+    contradictions: number;
+    llmCalls: number;
+    tokens: number;
+  };
 };
 
 // Map pipeline backend phase → 6 visible stages from design.
@@ -106,6 +119,28 @@ const STAGES: Array<{
 function cleanLine(s: string | null | undefined): string {
   if (!s) return "";
   return s.replace(/^\[[^\]]+\]\s*/, "").slice(0, 64);
+}
+
+function compact(n: number | null | undefined): string {
+  const value = Number(n ?? 0);
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return String(Math.round(value));
+}
+
+function progressText(run: Run): string {
+  const p = run.progress;
+  if (!p) return "";
+  const bits = [
+    p.questions ? `${p.questions}q/${p.subquestions}sq` : "",
+    p.sources ? `${p.sources} sources` : "",
+    p.facts ? `${p.facts} facts` : "",
+    p.verified ? `${p.verified} verified` : "",
+    p.debt ? `${p.debt} debt` : "",
+    p.contradictions ? `${p.contradictions} contradictions` : "",
+    p.tokens ? `${compact(p.tokens)} tok` : "",
+  ].filter(Boolean);
+  return bits.join(" · ");
 }
 
 function CancelRunInline({ runId }: { runId: string }) {
@@ -230,7 +265,7 @@ export function LivePipeline() {
               <div className="rl-stage-desc">{st.desc}</div>
               {isActive && (
                 <div className="rl-stage-log">
-                  {cleanLine(active?.lastLine) || "running…"}
+                  {progressText(active!) || cleanLine(active?.lastLine) || "running…"}
                 </div>
               )}
               {done && i === currentIdx - 1 && (

@@ -119,6 +119,36 @@ describe("listProjects", () => {
     expect(p.hasReport).toBe(true);
   });
 
+  test("derives source stats from per-subquestion files when index is missing", () => {
+    makeProject(
+      "qf-no-index",
+      {
+        "plan.json": {
+          topic: "test topic",
+          questions: [{ id: "Q1", subquestions: [{ id: "Q1.1" }] }],
+        },
+        "facts.json": [{ id: "F1" }],
+        "sources/Q1.1.json": {
+          question_id: "Q1",
+          subquestion_id: "Q1.1",
+          learnings: ["a", "b"],
+          results: [
+            { title: "a", url: "https://a.test", provider: "arxiv", query: "q" },
+            { title: "b", url: "https://b.test", provider: "openalex", query: "q" },
+          ],
+        },
+      },
+      USER_UID
+    );
+    const p = P.listProjects(USER_UID)[0]!;
+    expect(p.sources).toBe(2);
+    expect(p.learnings).toBe(2);
+    const detail = P.getProject("qf-no-index", USER_UID)!;
+    expect(detail.sources.total_sources).toBe(2);
+    expect(detail.sources.total_learnings).toBe(2);
+    expect(detail.units).toHaveLength(1);
+  });
+
   test("reports legacy hypothesis-first project with claims and critic", () => {
     makeProject(
       "hf-project",

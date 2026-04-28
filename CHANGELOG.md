@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.1 — 2026-04-28
+
+Product hardening for evidence-led deep research.
+
+### Engine
+- Added stable audit aliases for downstream consumers: `scout.json`, `sources.json`, `analysis.json`, `research_debt.json`, and `contradictions.json`.
+- Final reports now include a deterministic `Decision Readout` section that separates known evidence, research debt, contradiction pairs, and use boundaries before the per-question analysis.
+- Run progress now derives counters from disk artifacts: questions, subquestions, sources, learnings, facts, verification counts, research debt, contradictions, LLM calls, and tokens.
+
+### Web Product
+- Live pipeline widgets now show artifact counters instead of only the current phase log line.
+- Project loading falls back to per-subquestion source files when `sources/index.json` is absent, so source counts remain visible for manually started or recovered runs.
+- Brief constraints now render correctly when planner constraints are stored as a semicolon/newline-delimited string.
+
+### OSS / Security
+- Added `SECURITY.md`, `CONTRIBUTING.md`, and an MIT `LICENSE`.
+- Deploy docs now recommend `BOOTSTRAP_TOKEN` or admin seed credentials for first production signup.
+
 ## 0.4.0 — 2026-04-26
 
 Deep-research product surface, provider split, function-calling structured outputs, and usage telemetry.

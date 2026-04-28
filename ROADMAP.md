@@ -18,15 +18,18 @@
 - [x] Function-calling structured outputs with Zod validation and retry feedback
 - [x] Qwen/Gemini provider split, non-stream Runpod mode, and token/cost telemetry
 - [x] Cognition/audit product surface: coverage, source filters, verification counts, audit JSON export
+- [x] Evidence workbench: claim lifecycle, source trust, source recheck, research debt, contradiction resolver, and playbook layer
+- [x] Stable audit aliases for downstream consumers (`sources.json`, `analysis.json`, `research_debt.json`, `contradictions.json`)
 - [x] Unit test suite (`bun run test` — 148 tests) + GitHub Actions workflow
 
 ## Near-term
 
 - [ ] Run history — track multiple runs per project, diff facts/coverage/confidence over time
-- [ ] Configurable breadth/depth/budget per run (currently pipeline-wide defaults)
+- [x] Configurable breadth/depth/budget per run from the web UI/API
+- [ ] Stronger run-history diff UI — compare facts, coverage, debt, and source trust between reruns
 - [ ] Better chunking for >100kB pages (current: truncate at 20k chars; lose tail content)
 - [ ] Per-phase model selection (cheap model for query generation, stronger for evidence/verify)
-- [ ] OSS polish: public demo dataset, architecture diagrams, contributor guide, benchmark replay script
+- [ ] OSS polish: public demo dataset, architecture diagrams, benchmark replay script
 
 ## Medium-term
 

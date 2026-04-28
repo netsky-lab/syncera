@@ -124,6 +124,12 @@ export async function synthesize(
   }
 
   lines.push("## Summary", "", analysis.overall_summary, "");
+  lines.push(
+    "## Decision Readout",
+    "",
+    ...decisionReadout(plan, analysis, verified, rejectedIds, projectDir),
+    ""
+  );
 
   // Per-question sections
   for (const q of plan.questions) {
@@ -251,6 +257,92 @@ export async function synthesize(
   writeFileSync(reportPath, report);
   console.log(`[synth] Written: ${reportPath} (${report.length} chars)`);
   return report;
+}
+
+function decisionReadout(
+  plan: ResearchPlan,
+  analysis: AnalysisReport,
+  verified: Fact[],
+  rejectedIds: Set<string>,
+  projectDir: string
+): string[] {
+  const byQuestion = new Map<string, Fact[]>();
+  for (const fact of verified) {
+    const arr = byQuestion.get(fact.question_id) ?? [];
+    arr.push(fact);
+    byQuestion.set(fact.question_id, arr);
+  }
+  const graphPath = join(projectDir, "epistemic_graph.json");
+  let graph: any = null;
+  if (existsSync(graphPath)) {
+    try {
+      graph = JSON.parse(readFileSync(graphPath, "utf-8"));
+    } catch {}
+  }
+  const answerByQuestion = new Map(
+    analysis.answers.map((a) => [a.question_id, a])
+  );
+  const strong = plan.questions
+    .map((q) => {
+      const answer = answerByQuestion.get(q.id);
+      return {
+        q,
+        answer,
+        facts: byQuestion.get(q.id)?.length ?? 0,
+      };
+    })
+    .filter((row) => row.answer?.coverage === "complete" || row.answer?.coverage === "partial")
+    .sort((a, b) => b.facts - a.facts)
+    .slice(0, 3);
+  const weak = plan.questions
+    .map((q) => ({
+      q,
+      answer: answerByQuestion.get(q.id),
+      debt: (graph?.research_debt ?? []).filter((d: any) => d.question_id === q.id).length,
+    }))
+    .filter(
+      (row) =>
+        row.answer?.coverage === "gaps_critical" ||
+        row.answer?.coverage === "insufficient" ||
+        row.debt > 0
+    )
+    .sort((a, b) => b.debt - a.debt)
+    .slice(0, 4);
+  const contradictions = (graph?.contradictions ?? []).slice(0, 4);
+
+  const lines: string[] = [];
+  lines.push(
+    `- **Known:** ${verified.length} verified facts survived verification; ${rejectedIds.size} candidate facts were excluded from synthesis.`
+  );
+  if (strong.length) {
+    lines.push(
+      `- **Most usable answers now:** ${strong
+        .map((row) => `${row.q.id} (${row.answer?.coverage}, ${row.facts} facts)`)
+        .join("; ")}.`
+    );
+  }
+  if (weak.length) {
+    lines.push(
+      `- **Research debt:** ${weak
+        .map((row) => `${row.q.id} (${row.answer?.coverage ?? "pending"}${row.debt ? `, ${row.debt} debt` : ""})`)
+        .join("; ")}.`
+    );
+  } else {
+    lines.push("- **Research debt:** no critical gaps were recorded by the analyzer.");
+  }
+  if (contradictions.length) {
+    lines.push(
+      `- **Contradictions to resolve:** ${contradictions
+        .map((c: any) => `${(c.involved_facts ?? []).join(" vs ")}${c.difference ? ` — ${String(c.difference).slice(0, 120)}` : ""}`)
+        .join("; ")}.`
+    );
+  } else {
+    lines.push("- **Contradictions to resolve:** no explicit contradiction pairs were recorded.");
+  }
+  lines.push(
+    "- **Use boundary:** treat the report as decision support; convert open gaps into targeted follow-up runs before making claims that require missing measurements."
+  );
+  return lines;
 }
 
 // ---------------- LLM sections ----------------

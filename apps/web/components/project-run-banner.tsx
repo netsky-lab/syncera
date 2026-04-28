@@ -16,6 +16,19 @@ type Run = {
   startedAt: number;
   phase: string | null;
   lastLine: string | null;
+  progress?: {
+    questions: number;
+    subquestions: number;
+    sources: number;
+    learnings: number;
+    facts: number;
+    verified: number;
+    rejected: number;
+    debt: number;
+    contradictions: number;
+    llmCalls: number;
+    tokens: number;
+  };
 };
 
 const PHASE_LABEL: Record<string, string> = {
@@ -41,6 +54,13 @@ function elapsedMin(ms: number): string {
 function cleanLine(s: string | null | undefined): string {
   if (!s) return "";
   return s.replace(/^\[[^\]]+\]\s*/, "").slice(0, 120);
+}
+
+function compact(n: number | null | undefined): string {
+  const value = Number(n ?? 0);
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return String(Math.round(value));
 }
 
 export function ProjectRunBanner({ slug }: { slug: string }) {
@@ -115,10 +135,33 @@ export function ProjectRunBanner({ slug }: { slug: string }) {
           {cleanLine(run.lastLine)}
         </div>
       )}
+      {run.progress && (
+        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4 lg:grid-cols-7">
+          <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
+            {run.progress.questions || 0}q / {run.progress.subquestions || 0}sq
+          </span>
+          <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
+            {run.progress.sources || 0} sources
+          </span>
+          <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
+            {run.progress.learnings || 0} learnings
+          </span>
+          <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
+            {run.progress.facts || 0} facts
+          </span>
+          <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
+            {run.progress.verified || 0}/{run.progress.verified + run.progress.rejected || 0} verified
+          </span>
+          <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
+            {run.progress.debt || 0} debt
+          </span>
+          <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
+            {compact(run.progress.tokens)} tok
+          </span>
+        </div>
+      )}
       <div className="mt-1.5 text-[11px] text-fg-muted">
-        Page will keep the current view while the pipeline writes new
-        artifacts. Refresh after it finishes (or click around) to see
-        the updated report.
+        Artifacts update as phases finish; refresh after completion for the final report.
       </div>
     </div>
   );

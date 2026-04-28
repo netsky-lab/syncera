@@ -170,6 +170,15 @@ function formatCompact(n: number): string {
   return String(Math.round(n));
 }
 
+function listFromPlanField(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value !== "string") return [];
+  return value
+    .split(/\n|;/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 function hostOf(url: string): string {
   try {
     return new URL(url).host.replace(/^www\./, "");
@@ -324,8 +333,8 @@ export function ProjectWorkflow({
   const router = useRouter();
   const { plan, facts, analysisReport, report, sources, verification } = project;
   const questions = (plan.questions ?? []) as any[];
-  const constraints = Array.isArray(plan.constraints) ? plan.constraints : [];
-  const scopeNotes = Array.isArray(plan.scope_notes) ? plan.scope_notes : [];
+  const constraints = listFromPlanField(plan.constraints);
+  const scopeNotes = listFromPlanField(plan.scope_notes);
   const answers = (analysisReport?.answers ?? []) as any[];
   const sourceRows = useMemo(() => flattenSources(project), [project]);
   const verifiedFacts = verification?.summary?.verified ?? 0;

@@ -25,6 +25,7 @@ The product bet is simple: serious research tools should expose epistemic contro
 Topic
   │
   ├─ scout        → scout_digest.json       lit-survey calibration for the planner
+  │                 scout.json              stable audit alias
   │
   ├─ plan         → plan.json               ResearchQuestion[] × Subquestion[]
   │                                         (6 categories × 6 angles, Zod-validated)
@@ -32,6 +33,7 @@ Topic
   ├─ harvest      → sources/<SQ>.json       per-subquestion: SearXNG + Arxiv +
   │                                         OpenAlex, Playwright full-page render
   │                                         (+ sources/index.json aggregate)
+  │                 sources.json            stable aggregate audit alias
   │
   ├─ evidence     → facts.json              Fact extraction with exact-quote refs,
   │                                         one LLM call per subquestion with
@@ -49,6 +51,13 @@ Topic
   │                                         coverage verdict (complete / partial
   │                                         / gaps_critical / insufficient) +
   │                                         cross-question tensions
+  │                 analysis.json           stable audit alias
+  │
+  ├─ epistemic    → epistemic_graph.json    claim lifecycle graph:
+  │                                         claim → evidence → verification →
+  │                                         counterevidence → debt
+  │                 research_debt.json      stable debt sidecar
+  │                 contradictions.json     stable conflict-resolution sidecar
   │
   ├─ synth        → REPORT.md               final report — only verified facts,
   │                                         [F#] citations inline
@@ -111,9 +120,17 @@ projects/<slug>/
 │   ├── <SQ>.json         per-subquestion scraped sources (Playwright markdown)
 │   ├── index.json        aggregate by provider / subquestion
 │   └── content/          raw page markdown, one file per URL
+├── sources.json          stable aggregate source audit
 ├── facts.json            Fact[] with {statement, factuality, confidence, references}
 ├── verification.json     per-fact verdict + notes + corrected_statement
 ├── analysis_report.json  per-question answers + cross-question tensions
+├── analysis.json         stable alias for consumers
+├── epistemic_graph.json  claim lifecycle, counterevidence, debt, contradictions
+├── research_debt.json    debt items + severity summary
+├── contradictions.json   contradiction pass + conflict pairs
+├── llm_usage_summary.json token/cost telemetry by phase and model
+├── playbook.json         structured operational rules/checklists/evals
+├── PLAYBOOK.md           human-readable knowledge-to-playbook compiler output
 ├── README.md             auto-generated overview + coverage tally
 └── REPORT.md             final citation-backed report
 ```

@@ -86,6 +86,53 @@ function readJson(path: string): any {
   }
 }
 
+function sourceUnitsFromDir(dir: string): any[] {
+  const sourcesDir = join(dir, "sources");
+  if (!existsSync(sourcesDir)) return [];
+  const units: any[] = [];
+  for (const f of readdirSync(sourcesDir).filter((name) =>
+    /^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(name)
+  )) {
+    const unit = readJson(join(sourcesDir, f));
+    if (unit) units.push(unit);
+  }
+  return units;
+}
+
+function sourceSummaryFromUnits(units: any[]): {
+  total_sources: number;
+  total_learnings: number;
+  by_provider: Record<string, number>;
+} {
+  const byProvider: Record<string, number> = {};
+  let totalSources = 0;
+  let totalLearnings = 0;
+  for (const unit of units) {
+    const results = Array.isArray(unit.results) ? unit.results : [];
+    totalSources += results.length;
+    totalLearnings += Array.isArray(unit.learnings) ? unit.learnings.length : 0;
+    for (const row of results) {
+      const provider = String(row.provider ?? "unknown");
+      byProvider[provider] = (byProvider[provider] ?? 0) + 1;
+    }
+  }
+  return {
+    total_sources: totalSources,
+    total_learnings: totalLearnings,
+    by_provider: byProvider,
+  };
+}
+
+function readSourceSummary(dir: string): any {
+  const units = sourceUnitsFromDir(dir);
+  const computed = sourceSummaryFromUnits(units);
+  return (
+    readJson(join(dir, "sources", "index.json")) ??
+    readJson(join(dir, "sources.json")) ??
+    computed
+  );
+}
+
 // ─── Ownership ────────────────────────────────────────────────────────────
 
 function ownerPath(slug: string): string {
@@ -167,7 +214,7 @@ export function listProjects(viewerUid: string | null = null): ProjectSummary[] 
       const claims = readJson(join(dir, "claims.json")) ?? [];
       const facts = readJson(join(dir, "facts.json")) ?? [];
       const critic = readJson(join(dir, "critic_report.json"));
-      const sourcesIdx = readJson(join(dir, "sources", "index.json"));
+      const sourcesIdx = readSourceSummary(dir);
 
       return {
         slug,
@@ -224,7 +271,7 @@ export function listBranches(
     if (!canSee(owner_uid)) continue;
     const forkMeta = readJson(join(dir, "fork.meta.json"));
     const facts = readJson(join(dir, "facts.json")) ?? [];
-    const sourcesIdx = readJson(join(dir, "sources", "index.json"));
+    const sourcesIdx = readSourceSummary(dir);
     summaries.set(d.name, {
       slug: d.name,
       topic: plan.topic ?? d.name,
@@ -260,7 +307,7 @@ export function listBranches(
         const owner_uid = getOwner(parentSlug);
         if (!canSee(owner_uid)) return null;
         const facts = readJson(join(dir, "facts.json")) ?? [];
-        const sourcesIdx = readJson(join(dir, "sources", "index.json"));
+        const sourcesIdx = readSourceSummary(dir);
         return {
           slug: parentSlug,
           topic: plan.topic ?? parentSlug,
@@ -312,7 +359,8 @@ export function getProject(
   const playbookMarkdown = existsSync(playbookPath)
     ? readFileSync(playbookPath, "utf-8")
     : null;
-  const sources = readJson(join(dir, "sources", "index.json"));
+  const units = sourceUnitsFromDir(dir);
+  const sources = readSourceSummary(dir);
   const verification = readJson(join(dir, "verification.json"));
   const usageSummary = readJson(join(dir, "llm_usage_summary.json"));
   const epistemicGraph = readJson(join(dir, "epistemic_graph.json"));
@@ -321,7 +369,7 @@ export function getProject(
 
   // Per-unit source files: old schema uses T<n>.json, new schema uses Q<n>[.<m>].json
   const sourcesDir = join(dir, "sources");
-  const units: any[] = [];
+  const thinUnits: any[] = [];
   if (existsSync(sourcesDir)) {
     const files = readdirSync(sourcesDir).filter(
       (f) => /^(T|S?Q)\d+([-.]S?\d+)?\.json$/i.test(f)
@@ -344,7 +392,7 @@ export function getProject(
             return row;
           }),
         };
-        units.push(thin);
+        thinUnits.push(thin);
       } catch {}
     }
   }
@@ -363,7 +411,7 @@ export function getProject(
     playbook,
     playbookMarkdown,
     sources,
-    units,
+    units: thinUnits.length ? thinUnits : units,
     verification,
     usageSummary,
     epistemicGraph,
