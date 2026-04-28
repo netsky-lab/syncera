@@ -529,7 +529,9 @@ function summarizeRunErrors(lines: string[]): RunErrors {
       /\b0\/\d+ readable\b/i.test(line);
     if (!hit) continue;
     if (lower.includes(" transient ")) summary.llmTransient += 1;
-    if (lower.includes("failed:")) summary.failedUnits += 1;
+    if (lower.includes(" batch ") && lower.includes(" failed:")) {
+      summary.failedUnits += 1;
+    }
     if (/\b0\/\d+ readable\b/i.test(line)) summary.unreadableQueries += 1;
     if (lower.includes("timeout")) summary.searchTimeouts += 1;
     summary.last = line.slice(0, 180);
