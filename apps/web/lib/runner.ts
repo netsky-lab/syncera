@@ -559,6 +559,8 @@ export function startRun(
     "-e",
     `LLM_REQUEST_TIMEOUT_MS=${process.env.LLM_REQUEST_TIMEOUT_MS ?? ""}`,
     "-e",
+    `LLM_MAX_CONCURRENCY=${process.env.LLM_MAX_CONCURRENCY ?? ""}`,
+    "-e",
     `LLM_REASONING_EFFORT=${process.env.LLM_REASONING_EFFORT ?? ""}`,
     "-e",
     `LLM_INPUT_USD_PER_1M=${process.env.LLM_INPUT_USD_PER_1M ?? ""}`,
