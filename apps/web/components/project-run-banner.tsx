@@ -42,6 +42,13 @@ type Run = {
     label: string;
     reasons: string[];
   };
+  errors?: {
+    llmTransient: number;
+    failedUnits: number;
+    unreadableQueries: number;
+    searchTimeouts: number;
+    last: string | null;
+  };
 };
 
 const PHASE_LABEL: Record<string, string> = {
@@ -197,6 +204,26 @@ export function ProjectRunBanner({ slug }: { slug: string }) {
           )}
         </div>
       )}
+      {run.errors &&
+        (run.errors.llmTransient > 0 ||
+          run.errors.failedUnits > 0 ||
+          run.errors.unreadableQueries > 0 ||
+          run.errors.searchTimeouts > 0) && (
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
+            <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
+              {run.errors.llmTransient} transient LLM
+            </span>
+            <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
+              {run.errors.failedUnits} failed units
+            </span>
+            <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
+              {run.errors.unreadableQueries} unreadable queries
+            </span>
+            <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
+              {run.errors.searchTimeouts} timeouts
+            </span>
+          </div>
+        )}
       {run.health?.warning && (
         <div
           className={`mt-2 rounded border px-2 py-1.5 text-[11px] ${

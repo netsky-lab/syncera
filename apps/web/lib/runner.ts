@@ -122,6 +122,14 @@ export interface RunQuality {
   reasons: string[];
 }
 
+export interface RunErrors {
+  llmTransient: number;
+  failedUnits: number;
+  unreadableQueries: number;
+  searchTimeouts: number;
+  last: string | null;
+}
+
 const runs = new Map<string, ActiveRun>();
 
 function hasAttachedDockerRunClient(runId: string): boolean {
@@ -483,6 +491,53 @@ function qualityVerdict(
   return { verdict: "good", label: "Good run", reasons: ["Core quality checks passed."] };
 }
 
+function emptyRunErrors(): RunErrors {
+  return {
+    llmTransient: 0,
+    failedUnits: 0,
+    unreadableQueries: 0,
+    searchTimeouts: 0,
+    last: null,
+  };
+}
+
+function summarizeRunErrors(lines: string[]): RunErrors {
+  const summary = emptyRunErrors();
+  for (const raw of lines) {
+    if (!raw) continue;
+    let line = raw;
+    try {
+      const ev = JSON.parse(raw);
+      if (typeof ev.line === "string") line = ev.line;
+      else if (typeof ev.error === "string") line = ev.error;
+    } catch {}
+    const lower = line.toLowerCase();
+    const hit =
+      lower.includes(" transient ") ||
+      lower.includes("failed:") ||
+      lower.includes("timeout") ||
+      /\b0\/\d+ readable\b/i.test(line);
+    if (!hit) continue;
+    if (lower.includes(" transient ")) summary.llmTransient += 1;
+    if (lower.includes("failed:")) summary.failedUnits += 1;
+    if (/\b0\/\d+ readable\b/i.test(line)) summary.unreadableQueries += 1;
+    if (lower.includes("timeout")) summary.searchTimeouts += 1;
+    summary.last = line.slice(0, 180);
+  }
+  return summary;
+}
+
+function summarizeDiskRunErrors(runsDir: string, runId: string): RunErrors {
+  const jsonlPath = join(runsDir, `${runId}.jsonl`);
+  if (!existsSync(jsonlPath)) return emptyRunErrors();
+  try {
+    const buf = readFileSync(jsonlPath, "utf-8");
+    return summarizeRunErrors(buf.split("\n").filter(Boolean));
+  } catch {
+    return emptyRunErrors();
+  }
+}
+
 type ListedRun = {
   id: string;
   topic: string;
@@ -496,6 +551,7 @@ type ListedRun = {
   progress: RunProgress;
   health: RunHealth;
   quality: RunQuality;
+  errors: RunErrors;
 };
 
 function positiveIntEnv(name: string, fallback: number): number {
@@ -1056,6 +1112,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
   progress: RunProgress;
   health: RunHealth;
   quality: RunQuality;
+  errors: RunErrors;
 }[] {
   ensureOrphansReattached();
   // Visibility: you see runs you own + runs on projects you can view.
@@ -1087,6 +1144,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
         progress: publicProgress(progress),
         health,
         quality: qualityVerdict(r.status, r.lastPhase, progress, health),
+        errors: summarizeRunErrors(r.events.map((ev) => ev.line ?? ev.error ?? "")),
       };
     });
 
@@ -1146,6 +1204,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
           }
           const progress = runProgress(slugDir.name);
           const health = healthFromLastEvent(status, lastActivityAt(progress, lastEventAt));
+          const errors = summarizeDiskRunErrors(runsDir, m.id);
           diskRuns.push({
             id: m.id,
             topic: m.topic ?? slugDir.name,
@@ -1159,6 +1218,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
             progress: publicProgress(progress),
             health,
             quality: qualityVerdict(status, phase, progress, health),
+            errors,
           });
         } catch {}
       }

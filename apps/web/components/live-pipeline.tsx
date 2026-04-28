@@ -35,6 +35,13 @@ type Run = {
     label: string;
     reasons: string[];
   };
+  errors?: {
+    llmTransient: number;
+    failedUnits: number;
+    unreadableQueries: number;
+    searchTimeouts: number;
+    last: string | null;
+  };
 };
 
 // Map pipeline backend phase → 6 visible stages from design.
@@ -154,6 +161,8 @@ function progressText(run: Run): string {
     p.debt ? `${p.debt} debt` : "",
     p.contradictions ? `${p.contradictions} contradictions` : "",
     p.sourceQuality ? `q${p.sourceQuality}%` : "",
+    run.errors?.llmTransient ? `${run.errors.llmTransient} transient` : "",
+    run.errors?.unreadableQueries ? `${run.errors.unreadableQueries} unreadable` : "",
     p.tokens ? `${compact(p.tokens)} tok` : "",
   ].filter(Boolean);
   return bits.join(" · ");
