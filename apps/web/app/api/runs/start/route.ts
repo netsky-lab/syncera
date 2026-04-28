@@ -82,9 +82,18 @@ export async function POST(request: Request) {
     SEARXNG_TIMEOUT_MS: "10000",
     SEARXNG_RETRIES: "1",
     CONCURRENCY_HARVEST: String(parallelism),
-    CONCURRENCY_EVIDENCE: String(Math.min(parallelism, 32)),
-    CONCURRENCY_ANALYZER: String(Math.min(parallelism, 24)),
-    CONCURRENCY_VERIFIER: String(Math.min(parallelism, 32)),
+    CONCURRENCY_EVIDENCE:
+      effectiveProvider === "gemini"
+        ? String(Math.min(parallelism, 32))
+        : String(Math.min(parallelism, 6)),
+    CONCURRENCY_ANALYZER:
+      effectiveProvider === "gemini"
+        ? String(Math.min(parallelism, 24))
+        : String(Math.min(parallelism, 6)),
+    CONCURRENCY_VERIFIER:
+      effectiveProvider === "gemini"
+        ? String(Math.min(parallelism, 32))
+        : String(Math.min(parallelism, 6)),
     LLM_MAX_CONCURRENCY:
       effectiveProvider === "gemini"
         ? String(Math.min(parallelism, 32))

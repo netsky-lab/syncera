@@ -290,17 +290,14 @@ export async function extractEvidence(
       return;
     }
 
-    const methodPool = await Promise.race([
-      extractMethodPool(learnings, domainProfile),
-      new Promise<string[]>((resolve) =>
-        setTimeout(() => {
-          console.warn(
-            `[evidence] ${sourceIndex.subquestion_id}: method-pool timeout (60s) — skipping`
-          );
-          resolve([]);
-        }, 60_000)
-      ),
-    ]);
+    let methodPool: string[] = [];
+    try {
+      methodPool = await extractMethodPool(learnings, domainProfile);
+    } catch (err: any) {
+      console.warn(
+        `[evidence] ${sourceIndex.subquestion_id}: method-pool failed — ${err.message?.slice(0, 100)}`
+      );
+    }
     if (methodPool.length > 0) {
       console.log(
         `[evidence] ${sourceIndex.subquestion_id}: method-pool (${methodPool.length}): ${methodPool.slice(0, 8).join(", ")}${methodPool.length > 8 ? "..." : ""}`
