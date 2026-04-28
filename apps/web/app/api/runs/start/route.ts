@@ -97,7 +97,7 @@ export async function POST(request: Request) {
     EVIDENCE_LEARNINGS_PER_BATCH:
       effectiveProvider === "gemini" ? "5" : "2",
     EVIDENCE_MAX_TOKENS:
-      effectiveProvider === "gemini" ? "4096" : "2048",
+      "4096",
     LLM_MAX_CONCURRENCY:
       effectiveProvider === "gemini"
         ? String(Math.min(parallelism, 32))

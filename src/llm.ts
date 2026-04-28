@@ -468,9 +468,11 @@ export async function generateToolJson<T extends z.ZodType>(
         { role: "system", content: system },
         {
           role: "user",
-          content: `${prompt}
+          content: `/no_think
 
-Return JSON only. Do not use tool calls. Do not answer in prose.
+${prompt}
+
+Return JSON only. Do not use tool calls. Do not answer in prose. Do not include analysis or reasoning text.
 Schema hint:
 ${JSON.stringify(zodToJsonHint(schema), null, 2)}
 ${hint ? `\nPrevious tool-call attempt failed:\n${hint}` : ""}`,
@@ -484,8 +486,8 @@ ${hint ? `\nPrevious tool-call attempt failed:\n${hint}` : ""}`,
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const userPrompt =
       attempt === 0
-        ? `${prompt}\n\nCall the ${toolName} function exactly once with the complete object. Do not answer in prose.`
-        : `${prompt}\n\nCall the ${toolName} function exactly once with corrected arguments. Previous arguments failed validation:${lastErrorHint ? "\n" + lastErrorHint : ""}`;
+        ? `/no_think\n\n${prompt}\n\nCall the ${toolName} function exactly once with the complete object. Do not answer in prose. Do not include analysis or reasoning text.`
+        : `/no_think\n\n${prompt}\n\nCall the ${toolName} function exactly once with corrected arguments. Do not include analysis or reasoning text. Previous arguments failed validation:${lastErrorHint ? "\n" + lastErrorHint : ""}`;
 
     const result = await chatCompletion({
       messages: [
@@ -511,8 +513,7 @@ ${hint ? `\nPrevious tool-call attempt failed:\n${hint}` : ""}`,
     const call = result.toolCalls.find((tc) => tc.function.name === toolName) ?? result.toolCalls[0];
     const rawArgs =
       call?.function.arguments?.trim() ||
-      result.content.trim() ||
-      result.reasoning.trim();
+      result.content.trim();
     if (rawArgs) {
       const parsed = parseCandidate(rawArgs);
       if (parsed.ok) {
@@ -528,7 +529,7 @@ ${hint ? `\nPrevious tool-call attempt failed:\n${hint}` : ""}`,
     }
 
     const fallback = await textFallback(lastErrorHint);
-    const rawFallback = fallback.content.trim() || fallback.reasoning.trim();
+    const rawFallback = fallback.content.trim();
     if (rawFallback) {
       const parsed = parseCandidate(rawFallback);
       if (parsed.ok) {
