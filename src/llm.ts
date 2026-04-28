@@ -509,7 +509,10 @@ ${hint ? `\nPrevious tool-call attempt failed:\n${hint}` : ""}`,
     });
 
     const call = result.toolCalls.find((tc) => tc.function.name === toolName) ?? result.toolCalls[0];
-    const rawArgs = call?.function.arguments?.trim() || result.content.trim();
+    const rawArgs =
+      call?.function.arguments?.trim() ||
+      result.content.trim() ||
+      result.reasoning.trim();
     if (rawArgs) {
       const parsed = parseCandidate(rawArgs);
       if (parsed.ok) {
@@ -525,7 +528,7 @@ ${hint ? `\nPrevious tool-call attempt failed:\n${hint}` : ""}`,
     }
 
     const fallback = await textFallback(lastErrorHint);
-    const rawFallback = fallback.content.trim();
+    const rawFallback = fallback.content.trim() || fallback.reasoning.trim();
     if (rawFallback) {
       const parsed = parseCandidate(rawFallback);
       if (parsed.ok) {
