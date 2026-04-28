@@ -37,6 +37,11 @@ type Run = {
     stalled: boolean;
     warning: string | null;
   };
+  quality?: {
+    verdict: "pending" | "good" | "weak" | "retry";
+    label: string;
+    reasons: string[];
+  };
 };
 
 const PHASE_LABEL: Record<string, string> = {
@@ -113,6 +118,14 @@ export function ProjectRunBanner({ slug }: { slug: string }) {
   }
 
   if (!run) return null;
+  const qualityTone =
+    run.quality?.verdict === "retry"
+      ? "border-accent-red/30 bg-accent-red/[0.06] text-accent-red"
+      : run.quality?.verdict === "weak"
+        ? "border-accent-amber/30 bg-accent-amber/[0.06] text-accent-amber"
+        : run.quality?.verdict === "good"
+          ? "border-accent-sage/30 bg-accent-sage/[0.06] text-accent-sage"
+          : "border-fg/[0.06] bg-ink-900 text-fg-muted";
 
   return (
     <div className="mb-6 rounded-xl border border-accent-primary/30 bg-accent-primary/[0.04] px-4 py-3">
@@ -169,6 +182,17 @@ export function ProjectRunBanner({ slug }: { slug: string }) {
           {!!run.progress.sourceQuality && (
             <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
               q{run.progress.sourceQuality}%
+            </span>
+          )}
+        </div>
+      )}
+      {run.quality && (
+        <div className={`mt-2 rounded border px-2 py-1.5 text-[11px] ${qualityTone}`}>
+          <span className="font-medium">{run.quality.label}</span>
+          {run.quality.reasons.length > 0 && (
+            <span className="text-current/80">
+              {" "}
+              {run.quality.reasons.slice(0, 2).join(" ")}
             </span>
           )}
         </div>

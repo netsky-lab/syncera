@@ -30,6 +30,11 @@ type Run = {
     stalled: boolean;
     warning: string | null;
   };
+  quality?: {
+    verdict: "pending" | "good" | "weak" | "retry";
+    label: string;
+    reasons: string[];
+  };
 };
 
 // Map pipeline backend phase → 6 visible stages from design.
@@ -141,6 +146,7 @@ function progressText(run: Run): string {
   }
   if (!p) return "";
   const bits = [
+    run.quality?.label ? run.quality.label.toLowerCase() : "",
     p.questions ? `${p.questions}q/${p.subquestions}sq` : "",
     p.sources ? `${p.sources} sources` : "",
     p.facts ? `${p.facts} facts` : "",

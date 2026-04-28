@@ -116,6 +116,12 @@ export interface RunHealth {
   warning: string | null;
 }
 
+export interface RunQuality {
+  verdict: "pending" | "good" | "weak" | "retry";
+  label: string;
+  reasons: string[];
+}
+
 const runs = new Map<string, ActiveRun>();
 
 function hasAttachedDockerRunClient(runId: string): boolean {
@@ -429,6 +435,68 @@ function publicProgress(progress: RunProgressWithActivity): RunProgress {
 function lastActivityAt(progress: RunProgressWithActivity, lastEventAt: number | null): number | null {
   return Math.max(lastEventAt ?? 0, progress.activityAt ?? 0) || null;
 }
+
+function qualityVerdict(
+  status: string,
+  phase: string | null,
+  progress: RunProgressWithActivity,
+  health: RunHealth
+): RunQuality {
+  const reasons: string[] = [];
+  if (status === "failed") {
+    return { verdict: "retry", label: "Retry recommended", reasons: ["Pipeline exited before completion."] };
+  }
+  if (health.stalled) {
+    reasons.push("No recent pipeline activity.");
+  }
+
+  const totalVerified = progress.verified + progress.rejected;
+  const verifiedRatio = totalVerified > 0 ? progress.verified / totalVerified : null;
+  const rejectedSourceRatio =
+    progress.acceptedSources + progress.rejectedSources > 0
+      ? progress.rejectedSources / (progress.acceptedSources + progress.rejectedSources)
+      : null;
+
+  if (progress.sourceQuality > 0 && progress.sourceQuality < 45) {
+    reasons.push(`Low source quality (${progress.sourceQuality}%).`);
+  }
+  if (rejectedSourceRatio != null && rejectedSourceRatio > 0.75) {
+    reasons.push(`Most candidate sources were rejected (${Math.round(rejectedSourceRatio * 100)}%).`);
+  }
+  if (totalVerified > 0 && verifiedRatio != null && verifiedRatio < 0.45) {
+    reasons.push(`Low verified fact ratio (${Math.round(verifiedRatio * 100)}%).`);
+  }
+  if (status === "completed" && progress.facts < Math.max(12, progress.questions * 3)) {
+    reasons.push("Too few extracted facts for the plan size.");
+  }
+
+  if (status === "running" || !["synth", "playbook", "refine", null].includes(phase)) {
+    return {
+      verdict: reasons.length >= 2 || health.stalled ? "weak" : "pending",
+      label: reasons.length >= 2 || health.stalled ? "Watch run" : "In progress",
+      reasons,
+    };
+  }
+
+  if (reasons.length >= 2) return { verdict: "retry", label: "Retry recommended", reasons };
+  if (reasons.length === 1) return { verdict: "weak", label: "Weak run", reasons };
+  return { verdict: "good", label: "Good run", reasons: ["Core quality checks passed."] };
+}
+
+type ListedRun = {
+  id: string;
+  topic: string;
+  slug: string;
+  status: "running" | "completed" | "failed";
+  startedAt: number;
+  exitCode: number | null;
+  phase: string | null;
+  lastLine: string | null;
+  owner_uid: string | null;
+  progress: RunProgress;
+  health: RunHealth;
+  quality: RunQuality;
+};
 
 function positiveIntEnv(name: string, fallback: number): number {
   const raw = Number(process.env[name] ?? "");
@@ -987,6 +1055,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
   owner_uid: string | null;
   progress: RunProgress;
   health: RunHealth;
+  quality: RunQuality;
 }[] {
   ensureOrphansReattached();
   // Visibility: you see runs you own + runs on projects you can view.
@@ -1004,6 +1073,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
     .filter((r) => canSeeRun(r.ownerUid, r.slug))
     .map((r) => {
       const progress = runProgress(r.slug);
+      const health = healthFromLastEvent(r.status, lastActivityAt(progress, r.lastEventAt));
       return {
         id: r.id,
         topic: r.topic,
@@ -1015,12 +1085,13 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
         lastLine: r.lastLine,
         owner_uid: r.ownerUid,
         progress: publicProgress(progress),
-        health: healthFromLastEvent(r.status, lastActivityAt(progress, r.lastEventAt)),
+        health,
+        quality: qualityVerdict(r.status, r.lastPhase, progress, health),
       };
     });
 
   // Disk-persisted runs — scan projects/*/runs/*.meta.json
-  const diskRuns: (typeof memRuns) = [];
+  const diskRuns: ListedRun[] = [];
   try {
     for (const slugDir of readdirSync(repoRootContainerPath(), {
       withFileTypes: true,
@@ -1074,6 +1145,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
             }
           }
           const progress = runProgress(slugDir.name);
+          const health = healthFromLastEvent(status, lastActivityAt(progress, lastEventAt));
           diskRuns.push({
             id: m.id,
             topic: m.topic ?? slugDir.name,
@@ -1085,7 +1157,8 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
             lastLine,
             owner_uid: ownerUid,
             progress: publicProgress(progress),
-            health: healthFromLastEvent(status, lastActivityAt(progress, lastEventAt)),
+            health,
+            quality: qualityVerdict(status, phase, progress, health),
           });
         } catch {}
       }
