@@ -85,19 +85,19 @@ export async function POST(request: Request) {
     CONCURRENCY_EVIDENCE:
       effectiveProvider === "gemini"
         ? String(Math.min(parallelism, 32))
-        : String(Math.min(parallelism, 6)),
+        : String(Math.min(parallelism, 3)),
     CONCURRENCY_ANALYZER:
       effectiveProvider === "gemini"
         ? String(Math.min(parallelism, 24))
-        : String(Math.min(parallelism, 6)),
+        : String(Math.min(parallelism, 4)),
     CONCURRENCY_VERIFIER:
       effectiveProvider === "gemini"
         ? String(Math.min(parallelism, 32))
-        : String(Math.min(parallelism, 6)),
+        : String(Math.min(parallelism, 4)),
     LLM_MAX_CONCURRENCY:
       effectiveProvider === "gemini"
         ? String(Math.min(parallelism, 32))
-        : String(Math.min(parallelism, 6)),
+        : String(Math.min(parallelism, 4)),
   };
   if (provider) envOverrides.LLM_PROVIDER = provider;
 
