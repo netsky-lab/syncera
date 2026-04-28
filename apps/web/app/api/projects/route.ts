@@ -25,6 +25,9 @@ export async function GET(request: Request) {
         claims: p.claims,
         sources: p.sources,
         learnings: p.learnings,
+        source_quality: p.source_quality,
+        accepted_sources: p.accepted_sources,
+        rejected_sources: p.rejected_sources,
       },
       has_report: p.hasReport,
       confidence: p.confidence, // 0 for question-first, valid for hypothesis-first

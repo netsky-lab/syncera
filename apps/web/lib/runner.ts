@@ -69,6 +69,7 @@ interface ActiveRun {
   // phase tag and show null. We capture it on the fly instead.
   lastPhase: string | null;
   lastLine: string | null;
+  lastEventAt: number | null;
 }
 
 export interface RunProgress {
@@ -85,6 +86,16 @@ export interface RunProgress {
   llmCalls: number;
   tokens: number;
   costUsd: number | null;
+  sourceQuality: number;
+  acceptedSources: number;
+  rejectedSources: number;
+}
+
+export interface RunHealth {
+  lastEventAt: number | null;
+  idleSeconds: number | null;
+  stalled: boolean;
+  warning: string | null;
 }
 
 const runs = new Map<string, ActiveRun>();
@@ -234,11 +245,17 @@ function reattachOrphans() {
           ownerUid: null, // best-effort; project.owner is the authority
           lastPhase,
           lastLine,
+          lastEventAt:
+            events
+              .slice()
+              .reverse()
+              .find((ev) => typeof ev.ts === "number")?.ts ?? meta.lastEventAt ?? null,
         };
 
         const pushLine = (line: string) => {
           if (!line.trim()) return;
           const ev: RunEvent = { type: "line", line, ts: Date.now() };
+          run.lastEventAt = ev.ts;
           events.push(ev);
           if (events.length > 2000) events.splice(0, events.length - 2000);
           emitter.emit("event", ev);
@@ -305,6 +322,7 @@ function reattachOrphans() {
             code: run.exitCode,
             ts: Date.now(),
           };
+          run.lastEventAt = exitEv.ts;
           events.push(exitEv);
           emitter.emit("event", exitEv);
           try {
@@ -314,6 +332,7 @@ function reattachOrphans() {
             meta.status = run.status;
             meta.endedAt = Date.now();
             meta.exitCode = run.exitCode;
+            meta.lastEventAt = run.lastEventAt;
             writeFileSync(join(runsDir, f), JSON.stringify(meta, null, 2));
           } catch {}
         });
@@ -360,6 +379,35 @@ function readJson(path: string): any | null {
   }
 }
 
+function healthFromLastEvent(status: string, lastEventAt: number | null): RunHealth {
+  if (status !== "running") {
+    return { lastEventAt, idleSeconds: null, stalled: false, warning: null };
+  }
+  if (!lastEventAt) {
+    return {
+      lastEventAt: null,
+      idleSeconds: null,
+      stalled: false,
+      warning: "Run has no log events yet.",
+    };
+  }
+  const idleSeconds = Math.max(0, Math.floor((Date.now() - lastEventAt) / 1000));
+  const stalled = idleSeconds >= positiveIntEnv("RUN_STALL_WARNING_SECONDS", 15 * 60);
+  return {
+    lastEventAt,
+    idleSeconds,
+    stalled,
+    warning: stalled
+      ? `No pipeline log events for ${Math.floor(idleSeconds / 60)}m. The run may be stuck or detached.`
+      : null,
+  };
+}
+
+function positiveIntEnv(name: string, fallback: number): number {
+  const raw = Number(process.env[name] ?? "");
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+}
+
 function ownerForSlug(slug: string): string | null {
   try {
     return readFileSync(join(repoRootContainerPath(), slug, ".owner"), "utf-8").trim() || null;
@@ -385,7 +433,7 @@ function runProgress(slug: string): RunProgress {
   const plan = readJson(join(root, "plan.json"));
   const units = sourceUnits(slug);
   const sourcesSummary =
-    readJson(join(root, "sources", "index.json")) ?? readJson(join(root, "sources.json"));
+    readJson(join(root, "sources.json")) ?? readJson(join(root, "sources", "index.json"));
   const facts = readJson(join(root, "facts.json"));
   const verification = readJson(join(root, "verification.json"));
   const graph = readJson(join(root, "epistemic_graph.json"));
@@ -434,6 +482,9 @@ function runProgress(slug: string): RunProgress {
       typeof totals.estimated_cost_usd === "number"
         ? totals.estimated_cost_usd
         : null,
+    sourceQuality: Number(sourcesSummary?.quality?.score ?? 0),
+    acceptedSources: Number(sourcesSummary?.quality?.accepted ?? 0),
+    rejectedSources: Number(sourcesSummary?.quality?.rejected ?? 0),
   };
 }
 
@@ -640,6 +691,7 @@ export function startRun(
     ownerUid,
     lastPhase: null,
     lastLine: null,
+    lastEventAt: Date.now(),
   };
 
   // Persist run metadata + events to disk so history survives restart.
@@ -665,6 +717,7 @@ export function startRun(
             startedAt: run.startedAt,
             endedAt: run.status !== "running" ? Date.now() : null,
             exitCode: run.exitCode,
+            lastEventAt: run.lastEventAt,
           },
           null,
           2
@@ -677,6 +730,7 @@ export function startRun(
   const pushLine = (line: string) => {
     if (!line.trim()) return;
     const ev: RunEvent = { type: "line", line, ts: Date.now() };
+    run.lastEventAt = ev.ts;
     events.push(ev);
     if (events.length > 2000) events.splice(0, events.length - 2000);
     emitter.emit("event", ev);
@@ -702,6 +756,7 @@ export function startRun(
     run.status = code === 0 ? "completed" : "failed";
     run.exitCode = code;
     const ev: RunEvent = { type: "exit", code, ts: Date.now() };
+    run.lastEventAt = ev.ts;
     events.push(ev);
     emitter.emit("event", ev);
     try {
@@ -734,6 +789,7 @@ export function startRun(
   proc.on("error", (err) => {
     run.status = "failed";
     const ev: RunEvent = { type: "error", error: err.message, ts: Date.now() };
+    run.lastEventAt = ev.ts;
     events.push(ev);
     emitter.emit("event", ev);
   });
@@ -896,6 +952,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
   lastLine: string | null;
   owner_uid: string | null;
   progress: RunProgress;
+  health: RunHealth;
 }[] {
   ensureOrphansReattached();
   // Visibility: you see runs you own + runs on projects you can view.
@@ -923,6 +980,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
         lastLine: r.lastLine,
         owner_uid: r.ownerUid,
         progress: runProgress(r.slug),
+        health: healthFromLastEvent(r.status, r.lastEventAt),
       };
     });
 
@@ -951,6 +1009,8 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
           // container is still working.
           let phase: string | null = null;
           let lastLine: string | null = null;
+          let lastEventAt: number | null =
+            typeof m.lastEventAt === "number" ? m.lastEventAt : null;
           if (status === "running") {
             const jsonlPath = join(runsDir, `${m.id}.jsonl`);
             if (existsSync(jsonlPath)) {
@@ -962,6 +1022,9 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
                 for (let i = lines.length - 1; i >= 0; i--) {
                   try {
                     const ev = JSON.parse(lines[i]!);
+                    if (!lastEventAt && typeof ev.ts === "number") {
+                      lastEventAt = ev.ts;
+                    }
                     if (ev.type === "line" && typeof ev.line === "string") {
                       if (!lastLine) lastLine = ev.line;
                       const pm = ev.line.match(/\[phase:(\w+)\]/);
@@ -986,6 +1049,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
             lastLine,
             owner_uid: ownerUid,
             progress: runProgress(slugDir.name),
+            health: healthFromLastEvent(status, lastEventAt),
           });
         } catch {}
       }

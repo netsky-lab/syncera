@@ -19,10 +19,13 @@ Topic
   ├─ scout        → scout_digest.json
   ├─ plan         → plan.json               (ResearchQuestion[] × Subquestion[])
   ├─ harvest      → sources/<SQ>.json       + sources/content/<hash>.md
+  ├─ relevance    → sources/<SQ>.json       (domain/source-quality verdicts)
   ├─ evidence     → facts.json              (Fact[] with exact-quote refs)
   ├─ verify       → verification.json       (3-layer check per fact)
   ├─ analyze      → analysis_report.json    (per-question answers + tensions)
+  ├─ epistemic    → epistemic_graph.json    (claims, debt, contradictions)
   ├─ synth        → REPORT.md               (only verified facts)
+  ├─ playbook     → PLAYBOOK.md             (rules, checklists, evals)
   └─ refine       (opt-in: --refine)
 ```
 
@@ -39,6 +42,9 @@ For each subquestion:
 3. **Scrape** — top-N URLs rendered to markdown via Playwright (system chromium). Scored by tier (primary > official > code > blog > community) so the extractor sees the best source first.
 4. **Extract learnings** — one LLM pass per subquestion emitting concise factual learnings.
 5. **Persist** — `sources/<SQ>.json` (search results + learnings), `sources/content/<hash>.md` (full markdown), `sources/index.json` (aggregate).
+
+### Relevance (`src/relevance.ts`)
+Runs after harvest and before evidence extraction. Each source gets a domain verdict (`on | partial | off`), usefulness score (`0..3`), and source type (`peer_reviewed | preprint | clinical | technical_report | reference_work | blog | marketing | other`). Evidence extraction filters usefulness `0`; project summaries compute accepted/rejected counts and a 0–100 source quality score from these verdicts plus source authority.
 
 ### Evidence (`src/evidence.ts`)
 Per subquestion, packs the learnings + tier-sorted source catalog into a prompt. LLM emits `Fact[]` with `{id, question_id, subquestion_id, statement, factuality ∈ {quantitative|qualitative|comparative|background}, confidence 0–1, references:[{url, title, exact_quote}]}`. Post-processing:
@@ -62,10 +68,18 @@ Filters to verified facts, produces per-question narrative answers with `{covera
 
 Output: `analysis_report.json`.
 
+### Epistemic graph (`src/epistemic.ts`, `src/contradictions.ts`)
+Turns facts into claim lifecycle objects: claim → evidence → verification → counterevidence → confidence → freshness → dependencies → open questions. The deterministic graph is then enriched by the contradiction resolver and written to `epistemic_graph.json`, `research_debt.json`, and `contradictions.json`.
+
 ### Synthesizer (`src/synthesizer.ts`)
 Assembles the final markdown report using **only verified facts**, with inline citations `[F#]`. Coverage tally + per-question status in the auto-generated `README.md`.
 
 Output: `REPORT.md`.
+
+### Playbook (`src/playbook.ts`)
+Compiles verified research into operational knowledge: rules, checklists, decision trees, evals, failure modes, interventions, and templates. Thin evidence stays as eval triggers or research debt instead of becoming policy.
+
+Output: `playbook.json` and `PLAYBOOK.md`.
 
 ### Refine (`src/refine.ts`, opt-in via `--refine`)
 For questions flagged `insufficient`/`gaps_critical`, generates narrower targeted queries from the gap list ("TurboQuant CUDA kernel RTX 5090 implementation" vs broad survey queries), harvests, re-runs evidence → verify → analyze → synth with the new findings folded in.
@@ -97,14 +111,23 @@ See `src/schemas/`:
 ```
 projects/<slug>/
 ├── scout_digest.json
+├── scout.json
 ├── plan.json
 ├── sources/
-│   ├── <SQ>.json            per-subquestion results + learnings
+│   ├── <SQ>.json            per-subquestion results + learnings + relevance
 │   ├── content/<hash>.md    raw scraped markdown
 │   └── index.json           by-provider / by-subquestion aggregate
+├── sources.json             stable source audit + source quality summary
 ├── facts.json
 ├── verification.json
 ├── analysis_report.json
+├── analysis.json
+├── epistemic_graph.json
+├── research_debt.json
+├── contradictions.json
+├── llm_usage_summary.json
+├── playbook.json
+├── PLAYBOOK.md
 ├── README.md                auto-generated overview + coverage tally
 └── REPORT.md
 ```
@@ -119,7 +142,9 @@ Next.js 16 App Router. Edge middleware handles auth, CORS, and token-bucket rate
 - **API keys**: file-backed store (`lib/keys.ts`), SHA-256 hashed, raw shown once, revocation idempotent.
 - **Admin surface**: `/api/admin/users`, `/api/admin/keys` — session-gated, admin-role only. Self-delete and last-admin guards.
 - **OpenAPI 3.1**: `/api/openapi.json` documents every endpoint including auth + admin.
-- **Project view**: reading-mode layout (scroll-spy TOC, citation chips, JumpToTop) for question-first projects; legacy tabs view for hypothesis-first.
+- **Project view**: reading-mode layout with `Report`, `Playbook`, `Claims`, `Evidence`, `Debt`, `Cognition`, `Sources`, `Coverage`, and `Versions`.
+- **Run health**: `/api/runs` merges in-memory and disk-persisted run metadata, including phase, last line, artifact counters, token usage, source quality, and stale-log warnings.
+- **Compare**: `/compare?a=<slug>&b=<slug>` shows source overlap plus verified facts, source quality, research debt, and contradictions.
 - **PDF export**: `/api/projects/{slug}/pdf` — Playwright renders `/projects/{slug}/print` to PDF with print.css overrides.
 
 ## Deployment
@@ -130,3 +155,19 @@ Next.js 16 App Router. Edge middleware handles auth, CORS, and token-bucket rate
 - **web** — the Next.js app, with `/var/run/docker.sock` bind-mounted and `group_add: <docker GID>` so it can spawn sibling pipeline containers on the same compose network.
 - Volumes: `../projects:/app/projects:rw`, `../data:/app/data:rw` (persistent users/keys store).
 - Env: `SESSION_SECRET`, `ADMIN_EMAIL/PASSWORD`, `GEMMA_BASE_URL`, `API_CORS_ORIGINS`, `API_RATE_LIMIT_PER_MIN`, `PIPELINE_HOST_REPO_ROOT`, `PIPELINE_NETWORK`.
+
+## Product surfaces
+
+- `Report`: narrative answer from verified facts only.
+- `Claims`: claim lifecycle objects with evidence, confidence, verification, dependencies, counterevidence, and open questions.
+- `Evidence`: source trust workbench with claim impact and recheck branches.
+- `Debt`: unresolved checks that should survive the report.
+- `Cognition`: evidence control loop, trust budget, contradiction resolver, and question audit.
+- `Versions`: branches, reruns, and compare links.
+
+## Operational notes
+
+Run health is derived from `projects/<slug>/runs/*.jsonl` and meta sidecars.
+Source quality is derived from relevance verdicts plus source authority. Both
+are intentionally computed from disk artifacts so UI, API, and CLI runs stay in
+sync after process restarts.

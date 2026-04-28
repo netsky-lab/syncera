@@ -53,6 +53,83 @@ function sourceUnits(projectDir: string): any[] {
   return units;
 }
 
+function sourceQualitySummary(units: any[]) {
+  const summary = {
+    total: 0,
+    accepted: 0,
+    rejected: 0,
+    primary: 0,
+    official_or_code: 0,
+    weak: 0,
+    direct: 0,
+    score: 0,
+  };
+
+  for (const unit of units) {
+    for (const result of unit.results ?? []) {
+      summary.total++;
+      const relevance = result.relevance ?? null;
+      const usefulness =
+        typeof relevance?.usefulness === "number" ? relevance.usefulness : null;
+      const domainMatch = String(relevance?.domain_match ?? "").toLowerCase();
+      const sourceType = String(relevance?.source_type ?? "").toLowerCase();
+      const provider = String(result.provider ?? "").toLowerCase();
+      const url = String(result.url ?? "").toLowerCase();
+      const accepted =
+        !relevance ||
+        usefulness == null ||
+        usefulness >= 1 ||
+        domainMatch === "on" ||
+        domainMatch === "partial";
+
+      if (accepted) summary.accepted++;
+      else summary.rejected++;
+
+      if (domainMatch === "on" || usefulness === 3) summary.direct++;
+      if (
+        sourceType === "peer_reviewed" ||
+        sourceType === "preprint" ||
+        sourceType === "clinical" ||
+        provider.includes("arxiv") ||
+        provider.includes("openalex") ||
+        provider.includes("semantic")
+      ) {
+        summary.primary++;
+      } else if (
+        sourceType === "technical_report" ||
+        provider.includes("github") ||
+        url.includes("github.com") ||
+        url.includes("docs.") ||
+        url.includes("/docs/")
+      ) {
+        summary.official_or_code++;
+      }
+      if (
+        !accepted ||
+        usefulness === 1 ||
+        sourceType === "blog" ||
+        sourceType === "marketing" ||
+        sourceType === "other"
+      ) {
+        summary.weak++;
+      }
+    }
+  }
+
+  if (summary.total > 0) {
+    const acceptedRatio = summary.accepted / summary.total;
+    const authorityRatio =
+      (summary.primary + summary.official_or_code * 0.75) / summary.total;
+    const directRatio = summary.direct / summary.total;
+    summary.score = Math.round(
+      Math.max(0, Math.min(1, acceptedRatio * 0.4 + authorityRatio * 0.4 + directRatio * 0.2)) *
+        100
+    );
+  }
+
+  return summary;
+}
+
 function writeSourcesSummary(projectDir: string) {
   const units = sourceUnits(projectDir);
   const providerCounts: Record<string, number> = {};
@@ -71,17 +148,25 @@ function writeSourcesSummary(projectDir: string) {
     ...(typeof existing === "object" && existing ? existing : {}),
     total_sources: existing?.total_sources ?? totalSources,
     total_learnings: existing?.total_learnings ?? totalLearnings,
-    by_provider: existing?.by_provider ?? providerCounts,
-    units: units.map((unit) => ({
-      question_id: unit.question_id ?? unit.hypothesis_id ?? null,
-      subquestion_id: unit.subquestion_id ?? unit.task_id ?? null,
-      sources: Array.isArray(unit.results) ? unit.results.length : 0,
-      learnings: Array.isArray(unit.learnings) ? unit.learnings.length : 0,
-      accepted_sources: (unit.results ?? []).filter((r: any) => {
-        const match = r.relevance?.domain_match;
-        return !match || match === "direct" || match === "adjacent";
-      }).length,
-    })),
+      by_provider: existing?.by_provider ?? providerCounts,
+      quality: sourceQualitySummary(units),
+      units: units.map((unit) => ({
+        question_id: unit.question_id ?? unit.hypothesis_id ?? null,
+        subquestion_id: unit.subquestion_id ?? unit.task_id ?? null,
+        sources: Array.isArray(unit.results) ? unit.results.length : 0,
+        learnings: Array.isArray(unit.learnings) ? unit.learnings.length : 0,
+        accepted_sources: (unit.results ?? []).filter((r: any) => {
+          const match = r.relevance?.domain_match;
+          const usefulness = r.relevance?.usefulness;
+          return (
+            !r.relevance ||
+            usefulness == null ||
+            usefulness >= 1 ||
+            match === "on" ||
+            match === "partial"
+          );
+        }).length,
+      })),
     updated_at: new Date().toISOString(),
   });
 }

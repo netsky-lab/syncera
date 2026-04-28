@@ -24,12 +24,14 @@
 
 ## Near-term
 
-- [ ] Run history — track multiple runs per project, diff facts/coverage/confidence over time
+- [x] Run history — persist run metadata per project and surface attempts in the Versions tab
 - [x] Configurable breadth/depth/budget per run from the web UI/API
-- [ ] Stronger run-history diff UI — compare facts, coverage, debt, and source trust between reruns
+- [x] Stronger run-history diff UI — compare source overlap plus verified facts, source quality, debt, and contradictions between reruns
+- [x] Run-health warnings for long-silent pipeline phases
+- [x] Source-quality summary across CLI artifacts, project loader, REST API, dashboard, live run UI, and project source review
 - [ ] Better chunking for >100kB pages (current: truncate at 20k chars; lose tail content)
 - [ ] Per-phase model selection (cheap model for query generation, stronger for evidence/verify)
-- [ ] OSS polish: public demo dataset, architecture diagrams, benchmark replay script
+- [ ] OSS polish: public demo dataset, benchmark replay script, short screencast/GIF
 
 ## Medium-term
 

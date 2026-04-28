@@ -37,6 +37,16 @@ function collectSources(slug: string): {
   sources: Map<string, SourceSummary>;
   factsByUrl: Map<string, string[]>;
   topic: string;
+  metrics: {
+    questions: number;
+    sources: number;
+    facts: number;
+    verified: number;
+    rejected: number;
+    source_quality: number;
+    debt: number;
+    contradictions: number;
+  };
 } {
   const dir = join(projectsDir(), slug);
   const plan = readJson(join(dir, "plan.json")) ?? {};
@@ -71,11 +81,38 @@ function collectSources(slug: string): {
       }
     }
   }
+  const verification = readJson(join(dir, "verification.json")) ?? {};
+  const graph = readJson(join(dir, "epistemic_graph.json")) ?? {};
+  const sourceSummary =
+    readJson(join(dir, "sources.json")) ?? readJson(join(dir, "sources", "index.json")) ?? {};
+  const verRows = Array.isArray(verification.verifications)
+    ? verification.verifications
+    : [];
+  const verified =
+    typeof verification.summary?.verified === "number"
+      ? verification.summary.verified
+      : verRows.filter((v: any) => v.verdict === "verified").length;
+  const rejected =
+    typeof verification.summary?.rejected === "number"
+      ? verification.summary.rejected
+      : Math.max(0, (Array.isArray(facts) ? facts.length : 0) - verified);
 
   return {
     sources,
     factsByUrl,
     topic: String(plan.topic ?? slug),
+    metrics: {
+      questions: Array.isArray(plan.questions) ? plan.questions.length : 0,
+      sources: sources.size,
+      facts: Array.isArray(facts) ? facts.length : 0,
+      verified,
+      rejected,
+      source_quality: Number(sourceSummary.quality?.score ?? 0),
+      debt: Array.isArray(graph.research_debt) ? graph.research_debt.length : 0,
+      contradictions: Array.isArray(graph.contradictions)
+        ? graph.contradictions.length
+        : 0,
+    },
   };
 }
 
@@ -153,8 +190,8 @@ export async function GET(request: Request) {
   overlap.sort(byFactCount);
 
   return Response.json({
-    a: { slug: a, topic: A.topic, total: A.sources.size },
-    b: { slug: b, topic: B.topic, total: B.sources.size },
+    a: { slug: a, topic: A.topic, total: A.sources.size, metrics: A.metrics },
+    b: { slug: b, topic: B.topic, total: B.sources.size, metrics: B.metrics },
     onlyA,
     overlap,
     onlyB,

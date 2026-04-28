@@ -16,6 +16,9 @@ type Project = {
   facts: number;
   claims: number;
   sources: number;
+  source_quality?: number;
+  accepted_sources?: number;
+  rejected_sources?: number;
   hasReport: boolean;
   is_showcase: boolean;
   generatedAt?: string;
@@ -254,6 +257,11 @@ function Row({
         <span className="s">
           <strong>{project.sources}</strong>
         </span>
+        {typeof project.source_quality === "number" && project.source_quality > 0 && (
+          <span className="mt-1 block font-mono text-[10px] text-fg-muted">
+            q{project.source_quality}% · {project.accepted_sources ?? 0} accepted
+          </span>
+        )}
       </div>
       <div className="r-hide-mobile">
         <div className="rl-r-claims tnum">

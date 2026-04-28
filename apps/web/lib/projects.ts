@@ -35,6 +35,9 @@ export interface ProjectSummary {
   claims: number; // legacy schema
   sources: number;
   learnings: number;
+  source_quality: number;
+  accepted_sources: number;
+  rejected_sources: number;
   confidence: number; // hypothesis-first only
   hasReport: boolean;
   generatedAt: string;
@@ -103,10 +106,30 @@ function sourceSummaryFromUnits(units: any[]): {
   total_sources: number;
   total_learnings: number;
   by_provider: Record<string, number>;
+  quality: {
+    total: number;
+    accepted: number;
+    rejected: number;
+    primary: number;
+    official_or_code: number;
+    weak: number;
+    direct: number;
+    score: number;
+  };
 } {
   const byProvider: Record<string, number> = {};
   let totalSources = 0;
   let totalLearnings = 0;
+  const quality = {
+    total: 0,
+    accepted: 0,
+    rejected: 0,
+    primary: 0,
+    official_or_code: 0,
+    weak: 0,
+    direct: 0,
+    score: 0,
+  };
   for (const unit of units) {
     const results = Array.isArray(unit.results) ? unit.results : [];
     totalSources += results.length;
@@ -114,23 +137,84 @@ function sourceSummaryFromUnits(units: any[]): {
     for (const row of results) {
       const provider = String(row.provider ?? "unknown");
       byProvider[provider] = (byProvider[provider] ?? 0) + 1;
+      quality.total++;
+      const relevance = row.relevance ?? null;
+      const usefulness =
+        typeof relevance?.usefulness === "number" ? relevance.usefulness : null;
+      const domainMatch = String(relevance?.domain_match ?? "").toLowerCase();
+      const sourceType = String(relevance?.source_type ?? "").toLowerCase();
+      const providerLower = provider.toLowerCase();
+      const url = String(row.url ?? "").toLowerCase();
+      const accepted =
+        !relevance ||
+        usefulness == null ||
+        usefulness >= 1 ||
+        domainMatch === "on" ||
+        domainMatch === "partial";
+      if (accepted) quality.accepted++;
+      else quality.rejected++;
+      if (domainMatch === "on" || usefulness === 3) quality.direct++;
+      if (
+        sourceType === "peer_reviewed" ||
+        sourceType === "preprint" ||
+        sourceType === "clinical" ||
+        providerLower.includes("arxiv") ||
+        providerLower.includes("openalex") ||
+        providerLower.includes("semantic")
+      ) {
+        quality.primary++;
+      } else if (
+        sourceType === "technical_report" ||
+        providerLower.includes("github") ||
+        url.includes("github.com") ||
+        url.includes("docs.") ||
+        url.includes("/docs/")
+      ) {
+        quality.official_or_code++;
+      }
+      if (
+        !accepted ||
+        usefulness === 1 ||
+        sourceType === "blog" ||
+        sourceType === "marketing" ||
+        sourceType === "other"
+      ) {
+        quality.weak++;
+      }
     }
+  }
+  if (quality.total > 0) {
+    const acceptedRatio = quality.accepted / quality.total;
+    const authorityRatio =
+      (quality.primary + quality.official_or_code * 0.75) / quality.total;
+    const directRatio = quality.direct / quality.total;
+    quality.score = Math.round(
+      Math.max(0, Math.min(1, acceptedRatio * 0.4 + authorityRatio * 0.4 + directRatio * 0.2)) *
+        100
+    );
   }
   return {
     total_sources: totalSources,
     total_learnings: totalLearnings,
     by_provider: byProvider,
+    quality,
   };
 }
 
 function readSourceSummary(dir: string): any {
   const units = sourceUnitsFromDir(dir);
   const computed = sourceSummaryFromUnits(units);
-  return (
-    readJson(join(dir, "sources", "index.json")) ??
-    readJson(join(dir, "sources.json")) ??
-    computed
-  );
+  const index = readJson(join(dir, "sources", "index.json")) ?? {};
+  const alias = readJson(join(dir, "sources.json")) ?? {};
+  return {
+    ...computed,
+    ...(typeof index === "object" && index ? index : {}),
+    ...(typeof alias === "object" && alias ? alias : {}),
+    quality:
+      (typeof alias === "object" && alias && alias.quality) ||
+      (typeof index === "object" && index && index.quality) ||
+      computed.quality,
+  };
 }
 
 // ─── Ownership ────────────────────────────────────────────────────────────
@@ -226,6 +310,9 @@ export function listProjects(viewerUid: string | null = null): ProjectSummary[] 
         facts: Array.isArray(facts) ? facts.length : 0,
         sources: sourcesIdx?.total_sources ?? 0,
         learnings: sourcesIdx?.total_learnings ?? 0,
+        source_quality: sourcesIdx?.quality?.score ?? 0,
+        accepted_sources: sourcesIdx?.quality?.accepted ?? 0,
+        rejected_sources: sourcesIdx?.quality?.rejected ?? 0,
         confidence: critic?.overall_confidence ?? 0,
         hasReport: existsSync(join(dir, "REPORT.md")),
         generatedAt: plan.generated_at ?? "",
@@ -282,6 +369,9 @@ export function listBranches(
       facts: Array.isArray(facts) ? facts.length : 0,
       sources: sourcesIdx?.total_sources ?? 0,
       learnings: sourcesIdx?.total_learnings ?? 0,
+      source_quality: sourcesIdx?.quality?.score ?? 0,
+      accepted_sources: sourcesIdx?.quality?.accepted ?? 0,
+      rejected_sources: sourcesIdx?.quality?.rejected ?? 0,
       confidence: 0,
       hasReport: existsSync(join(dir, "REPORT.md")),
       generatedAt: plan.generated_at ?? "",
@@ -318,6 +408,9 @@ export function listBranches(
           facts: Array.isArray(facts) ? facts.length : 0,
           sources: sourcesIdx?.total_sources ?? 0,
           learnings: sourcesIdx?.total_learnings ?? 0,
+          source_quality: sourcesIdx?.quality?.score ?? 0,
+          accepted_sources: sourcesIdx?.quality?.accepted ?? 0,
+          rejected_sources: sourcesIdx?.quality?.rejected ?? 0,
           confidence: 0,
           hasReport: existsSync(join(dir, "REPORT.md")),
           generatedAt: plan.generated_at ?? "",

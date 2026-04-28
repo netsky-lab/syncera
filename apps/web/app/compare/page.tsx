@@ -24,11 +24,27 @@ type Row = {
 };
 
 type Diff = {
-  a: { slug: string; topic: string; total: number };
-  b: { slug: string; topic: string; total: number };
+  a: ProjectRef;
+  b: ProjectRef;
   onlyA: Row[];
   overlap: Row[];
   onlyB: Row[];
+};
+
+type ProjectRef = {
+  slug: string;
+  topic: string;
+  total: number;
+  metrics?: {
+    questions: number;
+    sources: number;
+    facts: number;
+    verified: number;
+    rejected: number;
+    source_quality: number;
+    debt: number;
+    contradictions: number;
+  };
 };
 
 export default function ComparePage() {
@@ -146,8 +162,9 @@ function ProjectCard({
   p,
 }: {
   label: string;
-  p: { slug: string; topic: string; total: number };
+  p: ProjectRef;
 }) {
+  const m = p.metrics;
   return (
     <Link
       href={`/projects/${p.slug}`}
@@ -162,6 +179,19 @@ function ProjectCard({
         </div>
       </div>
       <div className="text-[14px] text-fg line-clamp-2">{p.topic}</div>
+      {m && (
+        <div className="mt-3 grid grid-cols-3 gap-1.5 text-[10.5px] text-fg-muted">
+          <span className="rounded bg-ink-900 px-2 py-1">
+            {m.verified}/{m.facts} verified
+          </span>
+          <span className="rounded bg-ink-900 px-2 py-1">
+            q{m.source_quality || 0}%
+          </span>
+          <span className="rounded bg-ink-900 px-2 py-1">
+            {m.debt} debt
+          </span>
+        </div>
+      )}
     </Link>
   );
 }

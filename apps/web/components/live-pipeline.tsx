@@ -23,6 +23,12 @@ type Run = {
     contradictions: number;
     llmCalls: number;
     tokens: number;
+    sourceQuality?: number;
+  };
+  health?: {
+    idleSeconds: number | null;
+    stalled: boolean;
+    warning: string | null;
   };
 };
 
@@ -130,6 +136,9 @@ function compact(n: number | null | undefined): string {
 
 function progressText(run: Run): string {
   const p = run.progress;
+  if (run.health?.stalled && run.health.idleSeconds != null) {
+    return `no logs for ${Math.floor(run.health.idleSeconds / 60)}m · check run`;
+  }
   if (!p) return "";
   const bits = [
     p.questions ? `${p.questions}q/${p.subquestions}sq` : "",
@@ -138,6 +147,7 @@ function progressText(run: Run): string {
     p.verified ? `${p.verified} verified` : "",
     p.debt ? `${p.debt} debt` : "",
     p.contradictions ? `${p.contradictions} contradictions` : "",
+    p.sourceQuality ? `q${p.sourceQuality}%` : "",
     p.tokens ? `${compact(p.tokens)} tok` : "",
   ].filter(Boolean);
   return bits.join(" · ");

@@ -8,14 +8,19 @@ Product hardening for evidence-led deep research.
 - Added stable audit aliases for downstream consumers: `scout.json`, `sources.json`, `analysis.json`, `research_debt.json`, and `contradictions.json`.
 - Final reports now include a deterministic `Decision Readout` section that separates known evidence, research debt, contradiction pairs, and use boundaries before the per-question analysis.
 - Run progress now derives counters from disk artifacts: questions, subquestions, sources, learnings, facts, verification counts, research debt, contradictions, LLM calls, and tokens.
+- Source summaries now include an explicit source-quality budget: accepted/rejected sources, primary/official-code counts, weak-source count, direct-source count, and a 0-100 score.
 
 ### Web Product
 - Live pipeline widgets now show artifact counters instead of only the current phase log line.
+- Live runs now expose health warnings when a phase has produced no log events for too long.
+- Project dashboards, source review, run banners, and the REST API now surface source quality instead of only raw source volume.
+- The Versions tab now includes per-project run history, and `/compare` shows verified facts, source quality, research debt, and contradictions alongside source overlap.
 - Project loading falls back to per-subquestion source files when `sources/index.json` is absent, so source counts remain visible for manually started or recovered runs.
 - Brief constraints now render correctly when planner constraints are stored as a semicolon/newline-delimited string.
 
 ### OSS / Security
 - Added `SECURITY.md`, `CONTRIBUTING.md`, and an MIT `LICENSE`.
+- README now includes a local product-loop quickstart and a concrete demo script focused on the evidence audit trail.
 - Deploy docs now recommend `BOOTSTRAP_TOKEN` or admin seed credentials for first production signup.
 
 ## 0.4.0 — 2026-04-26

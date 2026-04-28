@@ -110,6 +110,27 @@ bun run src/run.ts "your research topic"
 ./scripts/run.sh "your research topic"
 ```
 
+## One-command local product loop
+
+For the full browser product you need the web app, SearXNG, Docker, and an
+OpenAI-compatible model endpoint:
+
+```bash
+# terminal 1: search backend
+cd infra/searxng && docker compose up -d
+
+# terminal 2: web product
+cd apps/web
+bun install
+bun run dev
+```
+
+Then open `http://localhost:3000`, create an account, and start a run from the
+dashboard. The web container/Next process spawns pipeline containers through
+Docker, writes artifacts to `projects/<slug>/`, and exposes live run health,
+token usage, source quality, evidence workbench, research debt, contradictions,
+run history, and report/playbook outputs.
+
 Artifacts land in `projects/<slug>/`:
 
 ```
@@ -161,6 +182,15 @@ Verdict breakdown from the 3-layer verifier on the same run:
 
 The rejected 28 % (59 facts) never reach the final report. The synthesizer takes only `verified` facts as input. Per-question coverage on this run: 3 `gaps_critical`, 1 `insufficient` — the analyzer does not paper over holes it didn't fill.
 
+## What to demo
+
+The strongest demo is not a polished answer. It is the audit trail:
+
+1. Start a difficult, technical research run where sources disagree.
+2. Open the project and inspect `Report`, `Claims`, `Evidence`, `Debt`, and `Cognition`.
+3. Show that weak/off-domain sources are filtered or marked, rejected facts stay out of synthesis, and unresolved uncertainty becomes research debt instead of prose.
+4. Use `Versions` / `/compare?a=<slug>&b=<slug>` to compare a rerun or follow-up branch by source overlap, verified facts, source quality, debt, and contradictions.
+
 ## Web UI + API
 
 ```bash
@@ -178,6 +208,9 @@ bun run dev           # localhost:3000
 Deploy to a server via `deploy/docker-compose.yml` (SearXNG + web + docker-out-of-docker so the web container can spawn pipeline containers on the shared network). See `deploy/README.md`.
 
 ## Architecture
+
+See also [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the filesystem/runtime
+boundaries and product surface map.
 
 - `src/run.ts`       — orchestrator, resumable phase runner
 - `src/scout.ts`     — lit survey → calibration digest

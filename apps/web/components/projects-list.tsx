@@ -15,6 +15,9 @@ type Project = {
   claims: number;
   sources: number;
   learnings: number;
+  source_quality?: number;
+  accepted_sources?: number;
+  rejected_sources?: number;
   confidence: number;
   hasReport: boolean;
   generatedAt: string;
@@ -163,6 +166,14 @@ export function ProjectsList({ projects }: { projects: Project[] }) {
                           </span>{" "}
                           sources
                         </span>
+                        {typeof p.source_quality === "number" && p.source_quality > 0 && (
+                          <span className="flex items-center gap-1.5">
+                            <span className="font-mono tabular-nums text-foreground/80">
+                              {p.source_quality}%
+                            </span>{" "}
+                            source quality
+                          </span>
+                        )}
                         {p.learnings > 0 && (
                           <span className="hidden sm:flex items-center gap-1.5">
                             <span className="font-mono tabular-nums text-foreground/80">

@@ -77,6 +77,12 @@ export function buildOpenApiSpec(origin = "https://example.local") {
                 claims: { type: "integer" },
                 sources: { type: "integer" },
                 learnings: { type: "integer" },
+                source_quality: {
+                  type: "integer",
+                  description: "0-100 source quality score from relevance gate and source authority mix.",
+                },
+                accepted_sources: { type: "integer" },
+                rejected_sources: { type: "integer" },
               },
             },
             has_report: { type: "boolean" },

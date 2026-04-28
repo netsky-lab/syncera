@@ -330,6 +330,7 @@ export function ProjectWorkflow({
   const [followUpBusy, setFollowUpBusy] = useState<string | null>(null);
   const [debtStatusBusy, setDebtStatusBusy] = useState<string | null>(null);
   const [sourceStatusBusy, setSourceStatusBusy] = useState<string | null>(null);
+  const [runHistory, setRunHistory] = useState<any[]>([]);
   const router = useRouter();
   const { plan, facts, analysisReport, report, sources, verification } = project;
   const questions = (plan.questions ?? []) as any[];
@@ -879,26 +880,30 @@ export function ProjectWorkflow({
     visibleEvidence[0] ??
     evidenceRows[0] ??
     null;
-  const sourceQualityPct = sourceRows.length
-    ? Math.round(
-        (sourceRows.reduce((sum, source) => {
-          const type = `${source.type ?? ""} ${source.provider ?? ""}`.toLowerCase();
-          const base =
-            type.includes("primary") ||
-            type.includes("official") ||
-            type.includes("paper") ||
-            type.includes("arxiv") ||
-            type.includes("semantic")
-              ? 1
-              : type.includes("blog") || type.includes("community")
-                ? 0.35
-                : 0.6;
-          return sum + base;
-        }, 0) /
-          sourceRows.length) *
-          100
-      )
-    : 0;
+  const sourceQualityFromSummary =
+    typeof sources?.quality?.score === "number" ? Number(sources.quality.score) : null;
+  const sourceQualityPct =
+    sourceQualityFromSummary ??
+    (sourceRows.length
+      ? Math.round(
+          (sourceRows.reduce((sum, source) => {
+            const type = `${source.type ?? ""} ${source.provider ?? ""}`.toLowerCase();
+            const base =
+              type.includes("primary") ||
+              type.includes("official") ||
+              type.includes("paper") ||
+              type.includes("arxiv") ||
+              type.includes("semantic")
+                ? 1
+                : type.includes("blog") || type.includes("community")
+                  ? 0.35
+                  : 0.6;
+            return sum + base;
+          }, 0) /
+            sourceRows.length) *
+            100
+        )
+      : 0);
   const debtScorePct = researchDebt.length
     ? Math.max(
         0,
@@ -924,6 +929,20 @@ export function ProjectWorkflow({
       contradictionScorePct * 0.15 +
       debtScorePct * 0.15
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/runs")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setRunHistory((data.runs ?? []).filter((run: any) => run.slug === slug));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
 
   useEffect(() => {
     if (!selectedEvidence?.statusRecord?.branch_slug) {
@@ -2658,6 +2677,29 @@ export function ProjectWorkflow({
                   </select>
                 </div>
 
+                {sources?.quality && (
+                  <div className="mt-4 grid gap-2 sm:grid-cols-4">
+                    {[
+                      ["Quality", `${sources.quality.score ?? sourceQualityPct}%`],
+                      ["Accepted", `${sources.quality.accepted ?? 0}/${sources.quality.total ?? totalSources}`],
+                      ["Primary", `${sources.quality.primary ?? 0}`],
+                      ["Weak", `${sources.quality.weak ?? 0}`],
+                    ].map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="rounded-md border border-fg/[0.06] bg-ink-900 px-3 py-2"
+                      >
+                        <div className="text-[10.5px] uppercase text-fg-muted">
+                          {label}
+                        </div>
+                        <div className="tnum mt-1 text-[15px] font-semibold text-fg">
+                          {value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="mt-4 divide-y divide-fg/[0.06] overflow-hidden rounded-md border border-fg/[0.06]">
                   {visibleSources.slice(0, 40).map((source) => (
                     <a
@@ -2827,6 +2869,53 @@ export function ProjectWorkflow({
                       No related branches yet.
                     </div>
                   )}
+
+                <div className="mt-4 rounded-md border border-fg/[0.06] bg-ink-900 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[11px] uppercase text-fg-muted">
+                        Run history
+                      </div>
+                      <div className="mt-1 text-[12px] text-fg-muted">
+                        Pipeline attempts writing to this project
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-ink-700 px-2 py-0.5 font-mono text-[10.5px] text-fg-muted">
+                      {runHistory.length} runs
+                    </span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {runHistory.slice(0, 5).map((run) => (
+                      <div
+                        key={run.id}
+                        className="grid gap-2 rounded border border-fg/[0.06] bg-ink-800 p-2 text-[11.5px] text-fg-muted sm:grid-cols-[130px_minmax(0,1fr)_auto]"
+                      >
+                        <span className="font-mono text-accent-primary">
+                          {String(run.id).slice(0, 13)}
+                        </span>
+                        <span className="min-w-0 truncate">
+                          {run.phase ?? run.lastLine ?? "completed"}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 ${
+                            run.status === "completed"
+                              ? "bg-accent-sage/10 text-accent-sage"
+                              : run.status === "running"
+                                ? "bg-accent-primary/10 text-accent-primary"
+                                : "bg-accent-red/10 text-accent-red"
+                          }`}
+                        >
+                          {run.health?.stalled ? "stalled" : run.status}
+                        </span>
+                      </div>
+                    ))}
+                    {runHistory.length === 0 && (
+                      <div className="text-[12px] text-fg-muted">
+                        No persisted run metadata is visible for this project.
+                      </div>
+                    )}
+                  </div>
+                </div>
               </section>
             )}
 

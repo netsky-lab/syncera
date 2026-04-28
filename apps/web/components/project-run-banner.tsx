@@ -28,6 +28,14 @@ type Run = {
     contradictions: number;
     llmCalls: number;
     tokens: number;
+    sourceQuality?: number;
+    acceptedSources?: number;
+    rejectedSources?: number;
+  };
+  health?: {
+    idleSeconds: number | null;
+    stalled: boolean;
+    warning: string | null;
   };
 };
 
@@ -136,7 +144,7 @@ export function ProjectRunBanner({ slug }: { slug: string }) {
         </div>
       )}
       {run.progress && (
-        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4 lg:grid-cols-7">
+        <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4 lg:grid-cols-8">
           <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
             {run.progress.questions || 0}q / {run.progress.subquestions || 0}sq
           </span>
@@ -158,6 +166,22 @@ export function ProjectRunBanner({ slug }: { slug: string }) {
           <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
             {compact(run.progress.tokens)} tok
           </span>
+          {!!run.progress.sourceQuality && (
+            <span className="rounded bg-ink-900 px-2 py-1 text-fg-muted">
+              q{run.progress.sourceQuality}%
+            </span>
+          )}
+        </div>
+      )}
+      {run.health?.warning && (
+        <div
+          className={`mt-2 rounded border px-2 py-1.5 text-[11px] ${
+            run.health.stalled
+              ? "border-accent-amber/30 bg-accent-amber/[0.06] text-accent-amber"
+              : "border-fg/[0.06] bg-ink-900 text-fg-muted"
+          }`}
+        >
+          {run.health.warning}
         </div>
       )}
       <div className="mt-1.5 text-[11px] text-fg-muted">
