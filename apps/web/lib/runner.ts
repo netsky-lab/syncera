@@ -475,7 +475,7 @@ function qualityVerdict(
   if (errors.failedUnits > 0) {
     reasons.push(`${errors.failedUnits} pipeline units reported failures.`);
   }
-  if (errors.llmTransient >= 5) {
+  if (status !== "completed" && errors.llmTransient >= 5) {
     reasons.push(`${errors.llmTransient} transient LLM errors occurred.`);
   }
   if (errors.unreadableQueries >= Math.max(20, progress.subquestions * 3)) {
