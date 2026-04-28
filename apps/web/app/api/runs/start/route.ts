@@ -60,6 +60,7 @@ export async function POST(request: Request) {
   const provider = ["qwen", "gemini"].includes(String(settings.provider))
     ? String(settings.provider)
     : undefined;
+  const effectiveProvider = provider ?? process.env.LLM_PROVIDER ?? "qwen";
   const preferredTypes = Array.isArray(settings.preferred_source_types)
     ? settings.preferred_source_types.map((x: any) => String(x)).filter(Boolean).slice(0, 8)
     : [];
@@ -84,6 +85,10 @@ export async function POST(request: Request) {
     CONCURRENCY_EVIDENCE: String(Math.min(parallelism, 32)),
     CONCURRENCY_ANALYZER: String(Math.min(parallelism, 24)),
     CONCURRENCY_VERIFIER: String(Math.min(parallelism, 32)),
+    LLM_MAX_CONCURRENCY:
+      effectiveProvider === "gemini"
+        ? String(Math.min(parallelism, 32))
+        : String(Math.min(parallelism, 6)),
   };
   if (provider) envOverrides.LLM_PROVIDER = provider;
 
