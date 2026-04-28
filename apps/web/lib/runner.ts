@@ -105,6 +105,7 @@ export interface RunProgress {
   sourceQuality: number;
   acceptedSources: number;
   rejectedSources: number;
+  activityAt: number | null;
 }
 
 export interface RunHealth {
@@ -419,6 +420,10 @@ function healthFromLastEvent(status: string, lastEventAt: number | null): RunHea
   };
 }
 
+function lastActivityAt(progress: RunProgress, lastEventAt: number | null): number | null {
+  return Math.max(lastEventAt ?? 0, progress.activityAt ?? 0) || null;
+}
+
 function positiveIntEnv(name: string, fallback: number): number {
   const raw = Number(process.env[name] ?? "");
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
@@ -478,6 +483,8 @@ function runProgress(slug: string): RunProgress {
         ? Math.max(0, Number(verSummary.total) - verified)
         : 0;
   const totals = usage?.totals ?? {};
+  const usageUpdatedAt =
+    typeof usage?.updated_at === "string" ? Date.parse(usage.updated_at) : NaN;
 
   return {
     questions: Array.isArray(plan?.questions) ? plan.questions.length : 0,
@@ -501,6 +508,7 @@ function runProgress(slug: string): RunProgress {
     sourceQuality: Number(sourcesSummary?.quality?.score ?? 0),
     acceptedSources: Number(sourcesSummary?.quality?.accepted ?? 0),
     rejectedSources: Number(sourcesSummary?.quality?.rejected ?? 0),
+    activityAt: Number.isFinite(usageUpdatedAt) ? usageUpdatedAt : null,
   };
 }
 
@@ -989,6 +997,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
   const memRuns = Array.from(runs.values())
     .filter((r) => canSeeRun(r.ownerUid, r.slug))
     .map((r) => {
+      const progress = runProgress(r.slug);
       return {
         id: r.id,
         topic: r.topic,
@@ -999,8 +1008,8 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
         phase: r.lastPhase,
         lastLine: r.lastLine,
         owner_uid: r.ownerUid,
-        progress: runProgress(r.slug),
-        health: healthFromLastEvent(r.status, r.lastEventAt),
+        progress,
+        health: healthFromLastEvent(r.status, lastActivityAt(progress, r.lastEventAt)),
       };
     });
 
@@ -1058,6 +1067,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
               } catch {}
             }
           }
+          const progress = runProgress(slugDir.name);
           diskRuns.push({
             id: m.id,
             topic: m.topic ?? slugDir.name,
@@ -1068,8 +1078,8 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
             phase,
             lastLine,
             owner_uid: ownerUid,
-            progress: runProgress(slugDir.name),
-            health: healthFromLastEvent(status, lastEventAt),
+            progress,
+            health: healthFromLastEvent(status, lastActivityAt(progress, lastEventAt)),
           });
         } catch {}
       }
