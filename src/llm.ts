@@ -435,6 +435,52 @@ export async function generateToolJson<T extends z.ZodType>(
   const parameters = zodToToolParameters(schema);
   let lastErrorHint: string | null = null;
 
+  const parseCandidate = (raw: string) => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(extractJsonPayload(raw));
+    } catch (err: any) {
+      return {
+        ok: false as const,
+        hint: `JSON parse error: ${err?.message ?? "malformed JSON"}`,
+        log: `Invalid JSON: ${raw.slice(0, 200)}`,
+      };
+    }
+
+    const parseResult = schema.safeParse(parsed);
+    if (parseResult.success) {
+      return { ok: true as const, data: parseResult.data };
+    }
+
+    const issueLines = parseResult.error.issues
+      .slice(0, 8)
+      .map((i: any) => `- ${i.path.join(".") || "(root)"}: ${i.message}`);
+    return {
+      ok: false as const,
+      hint: issueLines.join("\n"),
+      log: `Schema validation failed: ${issueLines.join("; ")}`,
+    };
+  };
+
+  const textFallback = async (hint: string | null) =>
+    chatCompletion({
+      messages: [
+        { role: "system", content: system },
+        {
+          role: "user",
+          content: `${prompt}
+
+Return JSON only. Do not use tool calls. Do not answer in prose.
+Schema hint:
+${JSON.stringify(zodToJsonHint(schema), null, 2)}
+${hint ? `\nPrevious tool-call attempt failed:\n${hint}` : ""}`,
+        },
+      ],
+      temperature,
+      maxTokens,
+      endpoint: options.endpoint,
+    });
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const userPrompt =
       attempt === 0
@@ -464,41 +510,40 @@ export async function generateToolJson<T extends z.ZodType>(
 
     const call = result.toolCalls.find((tc) => tc.function.name === toolName) ?? result.toolCalls[0];
     const rawArgs = call?.function.arguments?.trim() || result.content.trim();
-    if (!rawArgs) {
+    if (rawArgs) {
+      const parsed = parseCandidate(rawArgs);
+      if (parsed.ok) {
+        return { object: parsed.data, usage: result.usage, reasoning: result.reasoning };
+      }
+      lastErrorHint = parsed.hint;
+      console.warn(
+        `[llm] Tool ${parsed.log} on attempt ${attempt + 1}/${maxRetries + 1}`
+      );
+    } else {
       lastErrorHint = "No function-call arguments were returned.";
       console.warn(`[llm] Tool call missing arguments on attempt ${attempt + 1}/${maxRetries + 1}`);
-      if (attempt < maxRetries) continue;
-      throw new Error(`Tool call failed after ${maxRetries + 1} attempts: no arguments`);
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(extractJsonPayload(rawArgs));
-    } catch (err: any) {
-      lastErrorHint = `Tool argument JSON parse error: ${err?.message ?? "malformed JSON"}`;
+    const fallback = await textFallback(lastErrorHint);
+    const rawFallback = fallback.content.trim();
+    if (rawFallback) {
+      const parsed = parseCandidate(rawFallback);
+      if (parsed.ok) {
+        console.warn(`[llm] Tool-call fallback succeeded with plain JSON on attempt ${attempt + 1}/${maxRetries + 1}`);
+        return { object: parsed.data, usage: fallback.usage, reasoning: fallback.reasoning };
+      }
+      lastErrorHint = parsed.hint;
       console.warn(
-        `[llm] Invalid tool JSON on attempt ${attempt + 1}/${maxRetries + 1}: ${rawArgs.slice(0, 200)}`
+        `[llm] Plain JSON fallback ${parsed.log} on attempt ${attempt + 1}/${maxRetries + 1}`
       );
-      if (attempt < maxRetries) continue;
-      throw new Error(`Failed to parse tool arguments after ${maxRetries + 1} attempts`);
+    } else {
+      lastErrorHint = `${lastErrorHint ?? "Tool call failed"}\nPlain JSON fallback returned empty content.`;
+      console.warn(`[llm] Plain JSON fallback returned empty content on attempt ${attempt + 1}/${maxRetries + 1}`);
     }
 
-    const parseResult = schema.safeParse(parsed);
-    if (parseResult.success) {
-      return { object: parseResult.data, usage: result.usage, reasoning: result.reasoning };
-    }
-
-    const issueLines = parseResult.error.issues
-      .slice(0, 8)
-      .map((i: any) => `- ${i.path.join(".") || "(root)"}: ${i.message}`);
-    console.warn(
-      `[llm] Tool schema validation failed on attempt ${attempt + 1}/${maxRetries + 1}:`,
-      issueLines
-    );
-    lastErrorHint = issueLines.join("\n");
     if (attempt >= maxRetries) {
       throw new Error(
-        `Tool schema validation failed after ${maxRetries + 1} attempts: ${JSON.stringify(parseResult.error.issues.slice(0, 3))}`
+        `Tool JSON generation failed after ${maxRetries + 1} attempts: ${lastErrorHint ?? "unknown error"}`
       );
     }
   }
