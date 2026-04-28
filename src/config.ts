@@ -135,6 +135,10 @@ export const config = {
       inputUsdPer1M: price("LLM_INPUT_USD_PER_1M", isGemini ? 0.5 : 0),
       outputUsdPer1M: price("LLM_OUTPUT_USD_PER_1M", isGemini ? 3 : 0),
     },
+    maxConcurrency: Math.max(
+      1,
+      Math.floor(Number(process.env.LLM_MAX_CONCURRENCY ?? (isGemini ? 32 : 8)))
+    ),
   },
   failover: failoverEndpoints,
   endpoints: {

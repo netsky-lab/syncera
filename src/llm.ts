@@ -66,6 +66,8 @@ interface ChatCallResult {
 
 let telemetryProjectDir: string | null = null;
 let telemetryPhase = "unknown";
+let llmActive = 0;
+const llmQueue: Array<() => void> = [];
 
 export function setLlmTelemetryProject(projectDir: string | null) {
   telemetryProjectDir = projectDir;
@@ -121,9 +123,27 @@ function rotateTelemetryFile(projectDir: string, fileName: string) {
   }
 }
 
+async function withLlmSlot<T>(fn: () => Promise<T>): Promise<T> {
+  const max = config.llm.maxConcurrency;
+  if (llmActive >= max) {
+    await new Promise<void>((resolve) => llmQueue.push(resolve));
+  }
+  llmActive += 1;
+  try {
+    return await fn();
+  } finally {
+    llmActive = Math.max(0, llmActive - 1);
+    llmQueue.shift()?.();
+  }
+}
+
 // Always stream responses — prevents Cloudflare/proxy timeouts (524) on long
 // generations by keeping the connection active. Retries on transient 5xx.
 async function chatCompletion(opts: ChatCallOptions): Promise<ChatCallResult> {
+  return withLlmSlot(() => chatCompletionInner(opts));
+}
+
+async function chatCompletionInner(opts: ChatCallOptions): Promise<ChatCallResult> {
   const primaryEp = opts.endpoint ?? config.gemma;
   // Endpoint rotation: primary first, then each failover URL in order.
   // On 5xx / timeout / network error, attempt N+1 tries the next endpoint
