@@ -187,6 +187,52 @@ function hostOf(url: string): string {
   }
 }
 
+function sourceAuthorityScore(source: {
+  provider?: string | null;
+  type?: string | null;
+  sourceType?: string | null;
+  usefulness?: number | null;
+  domainMatch?: string | null;
+  url?: string | null;
+}): number {
+  const type = String(source.type ?? source.sourceType ?? "").toLowerCase();
+  const provider = String(source.provider ?? "").toLowerCase();
+  const url = String(source.url ?? "").toLowerCase();
+  const usefulness =
+    typeof source.usefulness === "number" ? source.usefulness : 1;
+  const domain = String(source.domainMatch ?? "").toLowerCase();
+
+  let score = usefulness * 20;
+  if (domain === "on") score += 28;
+  else if (domain === "partial") score += 14;
+  else if (domain === "off") score -= 36;
+
+  if (
+    type === "peer_reviewed" ||
+    type === "preprint" ||
+    type === "clinical" ||
+    provider.includes("arxiv") ||
+    provider.includes("openalex") ||
+    provider.includes("semantic")
+  ) {
+    score += 28;
+  } else if (
+    type === "technical_report" ||
+    provider.includes("github") ||
+    url.includes("github.com") ||
+    url.includes("docs.") ||
+    url.includes("/docs/")
+  ) {
+    score += 18;
+  } else if (type === "blog" || type === "community") {
+    score -= 10;
+  } else if (type === "marketing") {
+    score -= 24;
+  }
+
+  return score;
+}
+
 function copyText(text: string) {
   navigator.clipboard?.writeText(text).catch(() => {});
 }
@@ -266,7 +312,12 @@ function flattenSources(project: ProjectDetail): SourceRow[] {
       });
     }
   }
-  return rows;
+  return rows.sort(
+    (a, b) =>
+      sourceAuthorityScore(b) - sourceAuthorityScore(a) ||
+      (b.usefulness ?? 0) - (a.usefulness ?? 0) ||
+      hostOf(a.url).localeCompare(hostOf(b.url))
+  );
 }
 
 function phaseRows(project: ProjectDetail) {
@@ -813,6 +864,7 @@ export function ProjectWorkflow({
                 : 3;
         return (
           priority(a.status) - priority(b.status) ||
+          sourceAuthorityScore(b) - sourceAuthorityScore(a) ||
           b.linkedClaims.length - a.linkedClaims.length ||
           a.host.localeCompare(b.host)
         );
