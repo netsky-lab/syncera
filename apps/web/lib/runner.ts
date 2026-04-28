@@ -105,8 +105,9 @@ export interface RunProgress {
   sourceQuality: number;
   acceptedSources: number;
   rejectedSources: number;
-  activityAt: number | null;
 }
+
+type RunProgressWithActivity = RunProgress & { activityAt: number | null };
 
 export interface RunHealth {
   lastEventAt: number | null;
@@ -420,7 +421,12 @@ function healthFromLastEvent(status: string, lastEventAt: number | null): RunHea
   };
 }
 
-function lastActivityAt(progress: RunProgress, lastEventAt: number | null): number | null {
+function publicProgress(progress: RunProgressWithActivity): RunProgress {
+  const { activityAt, ...rest } = progress;
+  return rest;
+}
+
+function lastActivityAt(progress: RunProgressWithActivity, lastEventAt: number | null): number | null {
   return Math.max(lastEventAt ?? 0, progress.activityAt ?? 0) || null;
 }
 
@@ -449,7 +455,7 @@ function sourceUnits(slug: string): any[] {
   return units;
 }
 
-function runProgress(slug: string): RunProgress {
+function runProgress(slug: string): RunProgressWithActivity {
   const root = join(repoRootContainerPath(), slug);
   const plan = readJson(join(root, "plan.json"));
   const units = sourceUnits(slug);
@@ -1008,7 +1014,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
         phase: r.lastPhase,
         lastLine: r.lastLine,
         owner_uid: r.ownerUid,
-        progress,
+        progress: publicProgress(progress),
         health: healthFromLastEvent(r.status, lastActivityAt(progress, r.lastEventAt)),
       };
     });
@@ -1078,7 +1084,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
             phase,
             lastLine,
             owner_uid: ownerUid,
-            progress,
+            progress: publicProgress(progress),
             health: healthFromLastEvent(status, lastActivityAt(progress, lastEventAt)),
           });
         } catch {}
