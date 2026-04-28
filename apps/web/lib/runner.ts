@@ -1,7 +1,15 @@
 import { spawn, type ChildProcess } from "child_process";
 import { join } from "path";
 import { EventEmitter } from "events";
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, appendFileSync } from "fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 
 // Host-side path to bind-mount into pipeline containers. In dev this is the
 // repo root (two levels up from apps/web). In production the web container
@@ -42,6 +50,14 @@ function pipelineSearxngUrl(): string {
   return pipelineNetwork() === "searxng_default"
     ? "http://searxng-core:8080"
     : "http://research-lab-searxng:8080";
+}
+
+function clearProjectArtifacts(projectDir: string) {
+  if (!existsSync(projectDir)) return;
+  for (const entry of readdirSync(projectDir, { withFileTypes: true })) {
+    if (entry.name === ".owner" || entry.name === "runs") continue;
+    rmSync(join(projectDir, entry.name), { recursive: true, force: true });
+  }
 }
 
 export interface RunEvent {
@@ -497,6 +513,7 @@ export function startRun(
     extraArgs?: string[];
     userSources?: string[];
     env?: Record<string, string>;
+    clearArtifacts?: boolean;
   }
 ): { runId: string; slug: string } {
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -523,6 +540,7 @@ export function startRun(
       const projectDir = join(repoRootContainerPath(), slug);
       mkdirSync(projectDir, { recursive: true });
       if (!getOwner(slug)) setOwner(slug, ownerUid);
+      if (opts?.clearArtifacts) clearProjectArtifacts(projectDir);
       // Stage user-curated URL list so the pipeline picks it up via
       // USER_SOURCES_FILE env. Pipeline reads the file on startup,
       // skips scout+harvest, ingests URLs via Jina Reader.

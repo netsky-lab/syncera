@@ -89,6 +89,7 @@ export async function POST(request: Request) {
 
   const { runId, slug } = startRun(topic, mergedConstraints || undefined, ownerUid, {
     userSources: userSources.length > 0 ? userSources : undefined,
+    clearArtifacts: rerun,
     env: envOverrides,
     extraArgs: rerun
       ? [
