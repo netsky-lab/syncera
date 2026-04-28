@@ -448,7 +448,8 @@ function qualityVerdict(
   status: string,
   phase: string | null,
   progress: RunProgressWithActivity,
-  health: RunHealth
+  health: RunHealth,
+  errors: RunErrors
 ): RunQuality {
   const reasons: string[] = [];
   if (status === "failed") {
@@ -471,6 +472,15 @@ function qualityVerdict(
   if (rejectedSourceRatio != null && rejectedSourceRatio > 0.75) {
     reasons.push(`Most candidate sources were rejected (${Math.round(rejectedSourceRatio * 100)}%).`);
   }
+  if (errors.failedUnits > 0) {
+    reasons.push(`${errors.failedUnits} pipeline units reported failures.`);
+  }
+  if (errors.llmTransient >= 5) {
+    reasons.push(`${errors.llmTransient} transient LLM errors occurred.`);
+  }
+  if (errors.unreadableQueries >= Math.max(20, progress.subquestions * 3)) {
+    reasons.push(`${errors.unreadableQueries} query batches returned no readable sources.`);
+  }
   if (totalVerified > 0 && verifiedRatio != null && verifiedRatio < 0.45) {
     reasons.push(`Low verified fact ratio (${Math.round(verifiedRatio * 100)}%).`);
   }
@@ -482,11 +492,11 @@ function qualityVerdict(
     return {
       verdict: reasons.length >= 2 || health.stalled ? "weak" : "pending",
       label: reasons.length >= 2 || health.stalled ? "Watch run" : "In progress",
-      reasons,
+      reasons: reasons.slice(0, 4),
     };
   }
 
-  if (reasons.length >= 2) return { verdict: "retry", label: "Retry recommended", reasons };
+  if (reasons.length >= 2) return { verdict: "retry", label: "Retry recommended", reasons: reasons.slice(0, 4) };
   if (reasons.length === 1) return { verdict: "weak", label: "Weak run", reasons };
   return { verdict: "good", label: "Good run", reasons: ["Core quality checks passed."] };
 }
@@ -1131,6 +1141,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
     .map((r) => {
       const progress = runProgress(r.slug);
       const health = healthFromLastEvent(r.status, lastActivityAt(progress, r.lastEventAt));
+      const errors = summarizeRunErrors(r.events.map((ev) => ev.line ?? ev.error ?? ""));
       return {
         id: r.id,
         topic: r.topic,
@@ -1143,8 +1154,8 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
         owner_uid: r.ownerUid,
         progress: publicProgress(progress),
         health,
-        quality: qualityVerdict(r.status, r.lastPhase, progress, health),
-        errors: summarizeRunErrors(r.events.map((ev) => ev.line ?? ev.error ?? "")),
+        quality: qualityVerdict(r.status, r.lastPhase, progress, health, errors),
+        errors,
       };
     });
 
@@ -1217,7 +1228,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
             owner_uid: ownerUid,
             progress: publicProgress(progress),
             health,
-            quality: qualityVerdict(status, phase, progress, health),
+            quality: qualityVerdict(status, phase, progress, health, errors),
             errors,
           });
         } catch {}
