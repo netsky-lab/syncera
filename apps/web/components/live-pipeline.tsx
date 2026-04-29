@@ -42,6 +42,22 @@ type Run = {
     searchTimeouts: number;
     last: string | null;
   };
+  phaseUsage?: Array<{
+    phase: string;
+    calls: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    estimatedCostUsd: number;
+  }>;
+  timeline?: Array<{
+    phase: string;
+    durationSeconds: number | null;
+    status: "done" | "active" | "pending";
+    calls: number;
+    tokens: number;
+    costUsd: number;
+  }>;
 };
 
 // Map pipeline backend phase → 6 visible stages from design.
@@ -146,6 +162,16 @@ function compact(n: number | null | undefined): string {
   return String(Math.round(value));
 }
 
+function compactDuration(seconds: number | null | undefined): string {
+  if (seconds == null) return "live";
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m`;
+}
+
+function phaseLabel(phase: string): string {
+  return phase.charAt(0).toUpperCase() + phase.slice(1);
+}
+
 function progressText(run: Run): string {
   const p = run.progress;
   if (run.health?.stalled && run.health.idleSeconds != null) {
@@ -164,6 +190,25 @@ function progressText(run: Run): string {
     run.errors?.llmTransient ? `${run.errors.llmTransient} recovered retries` : "",
     run.errors?.unreadableQueries ? `${run.errors.unreadableQueries} unreadable` : "",
     p.tokens ? `${compact(p.tokens)} tok` : "",
+  ].filter(Boolean);
+  return bits.join(" · ");
+}
+
+function activePhaseStats(run: Run): string {
+  if (!run.phase) return "";
+  const current =
+    run.timeline?.find((x) => x.phase === run.phase) ??
+    run.phaseUsage?.find((x) => x.phase === run.phase);
+  if (!current) return "";
+  const c: any = current;
+  const bits = [
+    "phase",
+    `${c.calls ?? 0} calls`,
+    `${compact(c.tokens ?? c.totalTokens ?? 0)} tok`,
+    typeof (c.costUsd ?? c.estimatedCostUsd) === "number" && (c.costUsd ?? c.estimatedCostUsd) > 0
+      ? `$${(c.costUsd ?? c.estimatedCostUsd).toFixed(4)}`
+      : "",
+    "durationSeconds" in c ? compactDuration(c.durationSeconds) : "",
   ].filter(Boolean);
   return bits.join(" · ");
 }
@@ -268,6 +313,24 @@ export function LivePipeline() {
           )}
         </div>
       </div>
+      {active && (
+        <div className="rl-pipeline-usage" aria-label="Current run telemetry">
+          {(active.timeline ?? [])
+            .filter((item) => item.status !== "pending")
+            .slice(-5)
+            .map((item) => (
+              <div
+                key={item.phase}
+                className={item.status === "active" ? "rl-phase-chip active" : "rl-phase-chip"}
+                title={`${phaseLabel(item.phase)}: ${item.calls} calls, ${compact(item.tokens)} tokens`}
+              >
+                <span>{phaseLabel(item.phase)}</span>
+                <strong>{compact(item.tokens)}</strong>
+                <em>{compactDuration(item.durationSeconds)}</em>
+              </div>
+            ))}
+        </div>
+      )}
       <div className="rl-pipeline-track">
         <div className="rl-pipeline-line" />
         {currentIdx >= 0 && (
@@ -290,7 +353,7 @@ export function LivePipeline() {
               <div className="rl-stage-desc">{st.desc}</div>
               {isActive && (
                 <div className="rl-stage-log">
-                  {progressText(active!) || cleanLine(active?.lastLine) || "running…"}
+                  {activePhaseStats(active!) || progressText(active!) || cleanLine(active?.lastLine) || "running…"}
                 </div>
               )}
               {done && i === currentIdx - 1 && (

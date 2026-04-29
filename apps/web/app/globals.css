@@ -189,6 +189,25 @@
   flex-wrap: wrap;
 }
 .rl-pipeline-head .meta strong { color: var(--fg-default); font-weight: 500; }
+.rl-pipeline-usage {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin: -6px 0 18px;
+}
+.rl-phase-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  min-height: 28px; padding: 4px 8px;
+  border: 1px solid var(--ink-600); border-radius: 999px;
+  background: rgba(255,255,255,0.02);
+  font-family: var(--font-mono); font-size: 10.5px;
+  color: var(--fg-muted);
+}
+.rl-phase-chip strong { color: var(--fg-default); font-weight: 500; }
+.rl-phase-chip em { color: var(--fg-faint); font-style: normal; }
+.rl-phase-chip.active {
+  border-color: rgba(232, 165, 132, 0.36);
+  background: rgba(232, 165, 132, 0.08);
+  color: var(--accent-primary);
+}
 .rl-pipeline-track {
   position: relative; display: grid;
   grid-template-columns: repeat(6, 1fr); gap: 0;

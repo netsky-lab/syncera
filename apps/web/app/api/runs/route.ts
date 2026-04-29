@@ -1,6 +1,5 @@
-// GET /api/runs — list of pipeline runs known to this server process.
-// In-memory; restarts wipe history. For persistent history read
-// /projects/<slug>/runs/ on disk.
+// GET /api/runs — list pipeline runs visible to the current user.
+// Combines live process state with persisted projects/<slug>/runs metadata.
 
 import { listRuns } from "@/lib/runner";
 import { requireAuth, viewerUidFromRequest } from "@/lib/auth";

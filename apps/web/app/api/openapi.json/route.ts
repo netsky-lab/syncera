@@ -320,6 +320,55 @@ export function buildOpenApiSpec(origin = "https://example.local") {
             exitCode: { type: ["integer", "null"] },
             phase: { type: ["string", "null"], description: "Current phase name" },
             lastLine: { type: ["string", "null"] },
+            progress: {
+              type: "object",
+              description: "Live artifact counters and aggregate LLM usage.",
+            },
+            health: {
+              type: "object",
+              description: "Idle/stalled detection derived from latest log or usage activity.",
+            },
+            quality: {
+              type: "object",
+              description: "Heuristic run-quality verdict with retry/watch/good labels.",
+            },
+            errors: {
+              type: "object",
+              description: "Recovered transient failures and unreadable-source counters.",
+            },
+            phaseUsage: {
+              type: "array",
+              description: "LLM calls, tokens, and estimated cost grouped by pipeline phase.",
+              items: {
+                type: "object",
+                properties: {
+                  phase: { type: "string" },
+                  calls: { type: "integer" },
+                  promptTokens: { type: "integer" },
+                  completionTokens: { type: "integer" },
+                  totalTokens: { type: "integer" },
+                  estimatedCalls: { type: "integer" },
+                  estimatedCostUsd: { type: "number" },
+                },
+              },
+            },
+            timeline: {
+              type: "array",
+              description: "Phase spans reconstructed from run event logs and usage telemetry.",
+              items: {
+                type: "object",
+                properties: {
+                  phase: { type: "string" },
+                  startedAt: { type: ["integer", "null"] },
+                  endedAt: { type: ["integer", "null"] },
+                  durationSeconds: { type: ["integer", "null"] },
+                  status: { type: "string", enum: ["done", "active", "pending"] },
+                  calls: { type: "integer" },
+                  tokens: { type: "integer" },
+                  costUsd: { type: "number" },
+                },
+              },
+            },
           },
         },
       },
@@ -709,9 +758,9 @@ export function buildOpenApiSpec(origin = "https://example.local") {
       },
       "/api/runs": {
         get: {
-          summary: "List in-memory pipeline runs",
+          summary: "List pipeline runs",
           description:
-            "Runs are held in-memory per server process; restarts wipe. Sorted newest-first.",
+            "Combines live process state with persisted projects/<slug>/runs metadata. Sorted newest-first.",
           responses: {
             "200": {
               description: "OK",

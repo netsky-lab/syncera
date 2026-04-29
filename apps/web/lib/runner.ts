@@ -133,7 +133,40 @@ export interface RunErrors {
   last: string | null;
 }
 
+export interface RunPhaseUsage {
+  phase: string;
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCalls: number;
+  estimatedCostUsd: number;
+}
+
+export interface RunTimelineItem {
+  phase: string;
+  startedAt: number | null;
+  endedAt: number | null;
+  durationSeconds: number | null;
+  status: "done" | "active" | "pending";
+  calls: number;
+  tokens: number;
+  costUsd: number;
+}
+
 const runs = new Map<string, ActiveRun>();
+
+const PHASE_ORDER = [
+  "scout",
+  "plan",
+  "harvest",
+  "evidence",
+  "verify",
+  "analyze",
+  "synth",
+  "playbook",
+  "refine",
+];
 
 function hasAttachedDockerRunClient(runId: string): boolean {
   try {
@@ -551,6 +584,99 @@ function summarizeDiskRunErrors(runsDir: string, runId: string): RunErrors {
   }
 }
 
+function phaseUsageFromSummary(slug: string): RunPhaseUsage[] {
+  const usage = readJson(join(/*turbopackIgnore: true*/ repoRootContainerPath(), slug, "llm_usage_summary.json"));
+  const byPhase = usage?.by_phase;
+  if (!byPhase || typeof byPhase !== "object") return [];
+  return Object.entries(byPhase)
+    .map(([phase, raw]: [string, any]) => ({
+      phase,
+      calls: Number(raw?.calls ?? 0),
+      promptTokens: Number(raw?.prompt_tokens ?? 0),
+      completionTokens: Number(raw?.completion_tokens ?? 0),
+      totalTokens: Number(raw?.total_tokens ?? 0),
+      estimatedCalls: Number(raw?.estimated_calls ?? 0),
+      estimatedCostUsd: Number(raw?.estimated_cost_usd ?? 0),
+    }))
+    .filter((x) => x.calls > 0 || x.totalTokens > 0)
+    .sort((a, b) => {
+      const ai = PHASE_ORDER.indexOf(a.phase);
+      const bi = PHASE_ORDER.indexOf(b.phase);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi) || a.phase.localeCompare(b.phase);
+    });
+}
+
+function readRunEvents(runsDir: string, runId: string): RunEvent[] {
+  const jsonlPath = join(runsDir, `${runId}.jsonl`);
+  if (!existsSync(jsonlPath)) return [];
+  try {
+    const events: RunEvent[] = [];
+    for (const line of readFileSync(jsonlPath, "utf-8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const ev = JSON.parse(line);
+        if (ev && typeof ev.ts === "number") events.push(ev);
+      } catch {}
+    }
+    return events;
+  } catch {
+    return [];
+  }
+}
+
+function phaseTimeline(
+  events: RunEvent[],
+  status: string,
+  activePhase: string | null,
+  startedAt: number,
+  endedAt: number | null,
+  usage: RunPhaseUsage[]
+): RunTimelineItem[] {
+  const spans = new Map<string, { start: number; last: number }>();
+  for (const ev of events) {
+    if (ev.type !== "line" || typeof ev.line !== "string") continue;
+    const phase = phaseFromLine(ev.line);
+    if (!phase) continue;
+    const span = spans.get(phase);
+    if (!span) spans.set(phase, { start: ev.ts, last: ev.ts });
+    else span.last = ev.ts;
+  }
+
+  const phases = new Set<string>([...usage.map((u) => u.phase), ...spans.keys()]);
+  if (activePhase) phases.add(activePhase);
+  const ordered = [...phases].sort((a, b) => {
+    const ai = PHASE_ORDER.indexOf(a);
+    const bi = PHASE_ORDER.indexOf(b);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi) || a.localeCompare(b);
+  });
+  const usageByPhase = new Map(usage.map((u) => [u.phase, u]));
+
+  return ordered.map((phase, idx) => {
+    const span = spans.get(phase);
+    const nextSpan = ordered.slice(idx + 1).map((p) => spans.get(p)).find(Boolean);
+    const start = span?.start ?? (idx === 0 && startedAt ? startedAt : null);
+    const active = status === "running" && phase === activePhase;
+    const end = active
+      ? null
+      : nextSpan?.start ?? span?.last ?? (status !== "running" ? endedAt : null);
+    const durationSeconds =
+      start != null && end != null && end >= start
+        ? Math.max(0, Math.round((end - start) / 1000))
+        : null;
+    const u = usageByPhase.get(phase);
+    return {
+      phase,
+      startedAt: start,
+      endedAt: end,
+      durationSeconds,
+      status: active ? "active" : start == null ? "pending" : "done",
+      calls: u?.calls ?? 0,
+      tokens: u?.totalTokens ?? 0,
+      costUsd: u?.estimatedCostUsd ?? 0,
+    };
+  });
+}
+
 type ListedRun = {
   id: string;
   topic: string;
@@ -565,6 +691,8 @@ type ListedRun = {
   health: RunHealth;
   quality: RunQuality;
   errors: RunErrors;
+  timeline: RunTimelineItem[];
+  phaseUsage: RunPhaseUsage[];
 };
 
 function positiveIntEnv(name: string, fallback: number): number {
@@ -1121,6 +1249,8 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
   health: RunHealth;
   quality: RunQuality;
   errors: RunErrors;
+  timeline: RunTimelineItem[];
+  phaseUsage: RunPhaseUsage[];
 }[] {
   ensureOrphansReattached();
   // Visibility: you see runs you own + runs on projects you can view.
@@ -1139,6 +1269,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
       const progress = runProgress(r.slug);
       const health = healthFromLastEvent(r.status, lastActivityAt(progress, r.lastEventAt));
       const errors = summarizeRunErrors(r.events.map((ev) => ev.line ?? ev.error ?? ""));
+      const phaseUsage = phaseUsageFromSummary(r.slug);
       return {
         id: r.id,
         topic: r.topic,
@@ -1153,6 +1284,8 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
         health,
         quality: qualityVerdict(r.status, r.lastPhase, progress, health, errors),
         errors,
+        timeline: phaseTimeline(r.events, r.status, r.lastPhase, r.startedAt, null, phaseUsage),
+        phaseUsage,
       };
     });
 
@@ -1213,6 +1346,7 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
           const progress = runProgress(slugDir.name);
           const health = healthFromLastEvent(status, lastActivityAt(progress, lastEventAt));
           const errors = summarizeDiskRunErrors(runsDir, m.id);
+          const phaseUsage = phaseUsageFromSummary(slugDir.name);
           diskRuns.push({
             id: m.id,
             topic: m.topic ?? slugDir.name,
@@ -1227,6 +1361,15 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
             health,
             quality: qualityVerdict(status, phase, progress, health, errors),
             errors,
+            timeline: phaseTimeline(
+              readRunEvents(runsDir, m.id),
+              status,
+              phase,
+              m.startedAt ?? 0,
+              typeof m.endedAt === "number" ? m.endedAt : null,
+              phaseUsage
+            ),
+            phaseUsage,
           });
         } catch {}
       }
