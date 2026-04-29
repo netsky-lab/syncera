@@ -39,13 +39,15 @@ export async function PATCH(
   }
 
   const body = await request.json().catch(() => ({}));
-  const url = String(body.url ?? "").trim();
+  const urls: string[] = Array.isArray(body.urls)
+    ? body.urls.map((x: any) => String(x).trim()).filter(Boolean)
+    : [String(body.url ?? "").trim()].filter(Boolean);
   const status = String(body.status ?? "") as Exclude<
     SourceTrustStatus,
     "unreviewed"
   >;
-  if (!url) {
-    return Response.json({ error: "url is required" }, { status: 400 });
+  if (urls.length === 0) {
+    return Response.json({ error: "url or urls[] is required" }, { status: 400 });
   }
   if (!VALID.has(status)) {
     return Response.json(
@@ -54,28 +56,35 @@ export async function PATCH(
     );
   }
 
-  const statuses = setSourceStatus(
-    slug,
-    url,
-    {
-      status,
-      note: body.note == null ? null : String(body.note),
-      recheck_status:
-        body.recheck_status == null ||
-        !VALID_RECHECK.has(String(body.recheck_status))
-          ? undefined
-          : (String(body.recheck_status) as any),
-      branch_slug:
-        body.branch_slug === undefined
-          ? undefined
-          : body.branch_slug == null
-            ? null
-            : String(body.branch_slug),
-      source_claim_ids: Array.isArray(body.source_claim_ids)
-        ? body.source_claim_ids.map((x: any) => String(x)).filter(Boolean)
-        : undefined,
-    },
-    viewerUid
-  );
-  return Response.json({ ok: true, url, record: statuses[url] });
+  let statuses: Record<string, any> = {};
+  for (const url of urls.slice(0, 200)) {
+    statuses = setSourceStatus(
+      slug,
+      url,
+      {
+        status,
+        note: body.note == null ? null : String(body.note),
+        recheck_status:
+          body.recheck_status == null ||
+          !VALID_RECHECK.has(String(body.recheck_status))
+            ? undefined
+            : (String(body.recheck_status) as any),
+        branch_slug:
+          body.branch_slug === undefined
+            ? undefined
+            : body.branch_slug == null
+              ? null
+              : String(body.branch_slug),
+        source_claim_ids: Array.isArray(body.source_claim_ids)
+          ? body.source_claim_ids.map((x: any) => String(x)).filter(Boolean)
+          : undefined,
+      },
+      viewerUid
+    );
+  }
+  return Response.json({
+    ok: true,
+    updated: Math.min(urls.length, 200),
+    records: Object.fromEntries(urls.slice(0, 200).map((url) => [url, statuses[url]])),
+  });
 }

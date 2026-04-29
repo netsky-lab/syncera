@@ -1107,6 +1107,31 @@ export function ProjectWorkflow({
     }
   }
 
+  async function setVisibleSourcesTrust(status: "trusted" | "questionable" | "ignored") {
+    const urls = [...new Set(visibleSources.map((source) => source.url))].slice(0, 200);
+    if (urls.length === 0) return;
+    if (!confirm(`Mark ${urls.length} currently filtered source(s) as ${status}?`)) return;
+    setSourceStatusBusy(`batch:${status}`);
+    try {
+      const r = await fetch(`/api/projects/${slug}/sources/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls, status }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        alert(`Source batch update failed: ${data.error ?? r.status}`);
+        setSourceStatusBusy(null);
+        return;
+      }
+      router.refresh();
+    } catch (err: any) {
+      alert(`Source batch update failed: ${err?.message ?? err}`);
+    } finally {
+      setSourceStatusBusy(null);
+    }
+  }
+
   async function setSourceRecheckStatus(
     url: string,
     status: "replacement_found" | "resolved"
@@ -2749,6 +2774,24 @@ export function ProjectWorkflow({
                           {value}
                         </div>
                       </div>
+                    ))}
+                  </div>
+                )}
+
+                {canEdit && visibleSources.length > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2 rounded-md border border-fg/[0.06] bg-ink-900 px-3 py-2">
+                    <span className="mr-auto text-[11px] text-fg-muted">
+                      Batch review {Math.min(visibleSources.length, 200)} filtered sources
+                    </span>
+                    {(["trusted", "questionable", "ignored"] as const).map((status) => (
+                      <button
+                        key={status}
+                        onClick={() => setVisibleSourcesTrust(status)}
+                        disabled={sourceStatusBusy === `batch:${status}`}
+                        className="rounded border border-fg/[0.08] px-2 py-1 text-[11px] text-fg-dim transition hover:bg-ink-700 disabled:opacity-50"
+                      >
+                        {sourceStatusBusy === `batch:${status}` ? "Saving…" : status}
+                      </button>
                     ))}
                   </div>
                 )}

@@ -726,7 +726,7 @@ export function buildOpenApiSpec(origin = "https://example.local") {
           tags: ["projects"],
           summary: "Update source trust status",
           description:
-            "Owner-or-admin only. Stores a sidecar status for a cited source URL without mutating source or evidence artifacts.",
+            "Owner-or-admin only. Stores sidecar statuses for cited source URLs without mutating source or evidence artifacts.",
           parameters: [
             { name: "slug", in: "path", required: true, schema: { type: "string" } },
           ],
@@ -736,9 +736,14 @@ export function buildOpenApiSpec(origin = "https://example.local") {
               "application/json": {
                 schema: {
                   type: "object",
-                  required: ["url", "status"],
+                  required: ["status"],
                   properties: {
                     url: { type: "string" },
+                    urls: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: "Batch update. Up to 200 URLs are applied per request.",
+                    },
                     status: {
                       type: "string",
                       enum: ["trusted", "questionable", "ignored"],
