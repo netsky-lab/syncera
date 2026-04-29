@@ -1,12 +1,15 @@
 import type { NextConfig } from "next";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const appDir = dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   // Produce a self-contained .next/standalone build for minimal container images.
   output: "standalone",
-  // The web app reads from ../../projects relative to cwd at runtime;
-  // tell turbopack / next-file-tracing not to walk out of the monorepo root
-  // when bundling.
-  outputFileTracingRoot: process.cwd().replace(/\/apps\/web$/, ""),
+  turbopack: {
+    root: join(appDir, "../.."),
+  },
   experimental: {
     // Cap request body at 1MB. Next 16 defaults to 10MB; our largest
     // legitimate POST (runs/start with topic + constraints) is a few

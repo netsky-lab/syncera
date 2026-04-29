@@ -1,6 +1,9 @@
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, spawnSync, type ChildProcess } from "child_process";
 import { join } from "path";
 import { EventEmitter } from "events";
+import { canView, getOwner, setOwner } from "@/lib/projects";
+import { getWebhookTarget } from "@/lib/users";
+import { fireWebhook } from "@/lib/webhook";
 import {
   appendFileSync,
   existsSync,
@@ -23,7 +26,7 @@ function repoRoot(): string {
   // the whole monorepo into the standalone bundle.
   return (
     process.env.PIPELINE_HOST_REPO_ROOT ??
-    join(process.cwd(),"..", "..")
+    join(/*turbopackIgnore: true*/ process.cwd(), "..", "..")
   );
 }
 
@@ -32,9 +35,9 @@ function repoRoot(): string {
 // production, ../../projects in dev.
 function repoRootContainerPath(): string {
   if (process.env.PROJECTS_DIR) return process.env.PROJECTS_DIR;
-  const cwdProjects = join(process.cwd(),"projects");
+  const cwdProjects = join(/*turbopackIgnore: true*/ process.cwd(), "projects");
   if (existsSync(cwdProjects)) return cwdProjects;
-  return join(process.cwd(),"..", "..", "projects");
+  return join(/*turbopackIgnore: true*/ process.cwd(), "..", "..", "projects");
 }
 
 // Compose network name pipeline containers attach to so they can reach
@@ -135,7 +138,6 @@ const runs = new Map<string, ActiveRun>();
 function hasAttachedDockerRunClient(runId: string): boolean {
   try {
     const dockerBin = process.env.DOCKER_BIN ?? "/usr/bin/docker";
-    const { spawnSync } = require("child_process") as typeof import("child_process");
     const ps = spawnSync("ps", ["-eo", "pid=,args="], {
       encoding: "utf-8",
     });
@@ -184,7 +186,6 @@ function reattachOrphans() {
 
         // Ask docker whether the container is still alive.
         const dockerBin = process.env.DOCKER_BIN ?? "/usr/bin/docker";
-        const { spawnSync } = require("child_process") as typeof import("child_process");
         const inspect = spawnSync(
           dockerBin,
           ["inspect", "-f", "{{.State.Status}}", `rl-run-${meta.id}`],
@@ -580,7 +581,7 @@ function ownerForSlug(slug: string): string | null {
 }
 
 function sourceUnits(slug: string): any[] {
-  const sourcesDir = join(repoRootContainerPath(), slug, "sources");
+  const sourcesDir = join(/*turbopackIgnore: true*/ repoRootContainerPath(), slug, "sources");
   if (!existsSync(sourcesDir)) return [];
   const units: any[] = [];
   for (const file of readdirSync(sourcesDir)) {
@@ -592,7 +593,7 @@ function sourceUnits(slug: string): any[] {
 }
 
 function runProgress(slug: string): RunProgressWithActivity {
-  const root = join(repoRootContainerPath(), slug);
+  const root = join(/*turbopackIgnore: true*/ repoRootContainerPath(), slug);
   const plan = readJson(join(root, "plan.json"));
   const units = sourceUnits(slug);
   const sourcesSummary =
@@ -680,14 +681,12 @@ export function startRun(
   // pipeline drop its artifacts inside the dir we already own.
   if (ownerUid) {
     try {
-      const { getOwner, setOwner } =
-        require("@/lib/projects") as typeof import("./projects");
       const existingOwner = getOwner(slug);
       if (existingOwner && existingOwner !== ownerUid && !opts?.forceSlug) {
         const suffix = ownerUid.replace(/^u_/, "").slice(0, 6);
         slug = `${slug}-${suffix}`;
       }
-      const projectDir = join(repoRootContainerPath(), slug);
+      const projectDir = join(/*turbopackIgnore: true*/ repoRootContainerPath(), slug);
       mkdirSync(projectDir, { recursive: true });
       if (!getOwner(slug)) setOwner(slug, ownerUid);
       if (opts?.clearArtifacts) clearProjectArtifacts(projectDir);
@@ -938,8 +937,6 @@ export function startRun(
     // the runner itself synchronous — deliver() has its own timeout +
     // retries and never throws.
     if (ownerUid) {
-      const { getWebhookTarget } = require("@/lib/users") as typeof import("./users");
-      const { fireWebhook } = require("@/lib/webhook") as typeof import("./webhook");
       const target = getWebhookTarget(ownerUid);
       if (target) {
         void fireWebhook(target, {
@@ -980,7 +977,6 @@ export async function cancelRun(runId: string): Promise<{ ok: boolean; reason?: 
   const dockerKill = () => {
     try {
       const dockerBin = process.env.DOCKER_BIN ?? "/usr/bin/docker";
-      const { spawnSync } = require("child_process") as typeof import("child_process");
       const res = spawnSync(dockerBin, ["kill", `rl-run-${runId}`], {
         env: {
           ...process.env,
@@ -1129,7 +1125,6 @@ export function listRuns(viewerUid: string | null = null, viewerIsAdmin = false)
   ensureOrphansReattached();
   // Visibility: you see runs you own + runs on projects you can view.
   // Admin sees everything (god viewer). Non-auth sees nothing.
-  const { canView } = require("@/lib/projects") as typeof import("./projects");
   const canSeeRun = (ownerUid: string | null, slug: string): boolean => {
     if (viewerIsAdmin) return true;
     if (ownerUid && ownerUid === viewerUid) return true;

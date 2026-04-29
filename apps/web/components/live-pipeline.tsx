@@ -161,7 +161,7 @@ function progressText(run: Run): string {
     p.debt ? `${p.debt} debt` : "",
     p.contradictions ? `${p.contradictions} contradictions` : "",
     p.sourceQuality ? `q${p.sourceQuality}%` : "",
-    run.errors?.llmTransient ? `${run.errors.llmTransient} transient` : "",
+    run.errors?.llmTransient ? `${run.errors.llmTransient} recovered retries` : "",
     run.errors?.unreadableQueries ? `${run.errors.unreadableQueries} unreadable` : "",
     p.tokens ? `${compact(p.tokens)} tok` : "",
   ].filter(Boolean);

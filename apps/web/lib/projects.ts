@@ -281,7 +281,7 @@ export function listProjects(viewerUid: string | null = null): ProjectSummary[] 
 
   return dirs
     .map((slug) => {
-      const dir = join(root, slug);
+      const dir = join(/*turbopackIgnore: true*/ root, slug);
       const plan = readJson(join(dir, "plan.json"));
       if (!plan) return null;
 
@@ -339,7 +339,7 @@ export function listBranches(
   if (!existsSync(root)) return { children: [], parent: null, siblings: [] };
 
   const viewerIsAdmin = isAdmin(viewerUid);
-  const selfFork = readJson(join(root, slug, "fork.meta.json"));
+  const selfFork = readJson(join(/*turbopackIgnore: true*/ root, slug, "fork.meta.json"));
   const parentSlug: string | null = selfFork?.source_slug ?? null;
 
   const canSee = (ownerUid: string | null) =>
@@ -351,7 +351,7 @@ export function listBranches(
   for (const d of readdirSync(root, { withFileTypes: true })) {
     if (!d.isDirectory()) continue;
     if (d.name === slug) continue;
-    const dir = join(root, d.name);
+    const dir = join(/*turbopackIgnore: true*/ root, d.name);
     const plan = readJson(join(dir, "plan.json"));
     if (!plan) continue;
     const owner_uid = getOwner(d.name);
@@ -391,7 +391,7 @@ export function listBranches(
     : [];
   const parent = parentSlug
     ? (() => {
-        const dir = join(root, parentSlug);
+        const dir = join(/*turbopackIgnore: true*/ root, parentSlug);
         const plan = readJson(join(dir, "plan.json"));
         if (!plan) return null;
         const owner_uid = getOwner(parentSlug);
@@ -427,7 +427,7 @@ export function getProject(
   slug: string,
   viewerUid: string | null = null
 ): ProjectDetail | null {
-  const dir = join(projectsDir(), slug);
+  const dir = join(/*turbopackIgnore: true*/ projectsDir(), slug);
   const plan = readJson(join(dir, "plan.json"));
   if (!plan) return null;
 
