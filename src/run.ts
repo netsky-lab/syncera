@@ -215,7 +215,7 @@ async function main() {
   const slug = process.env.FORCE_SLUG || slugify(topic);
   const projectDir = join(PROJECTS_DIR, slug);
 
-  console.log(`\n=== Research Lab ===`);
+  console.log(`\n=== Syncera ===`);
   console.log(`Topic: ${topic}`);
   console.log(`Project: ${projectDir}\n`);
 

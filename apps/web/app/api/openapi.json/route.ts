@@ -1,4 +1,4 @@
-// GET /api/openapi.json — OpenAPI 3.1 spec for the research-lab API.
+// GET /api/openapi.json — OpenAPI 3.1 spec for the Syncera API.
 // Consumers can pipe this into `openapi-generator-cli` / `openapi-typescript` /
 // `oapi-codegen` etc to autogenerate a typed client.
 

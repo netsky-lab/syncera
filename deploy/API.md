@@ -1,4 +1,4 @@
-# Research Lab — REST API
+# Syncera — REST API
 
 External consumers read research artifacts and orchestrate runs through
 this JSON API. The canonical machine-readable spec is
@@ -204,17 +204,17 @@ via `GET /api/runs/stream?id=<runId>`.
 
 ```bash
 # 1. List what's available
-curl -H "X-API-Key: $KEY" https://research.example.com/api/projects
+curl -H "X-API-Key: $KEY" https://syncera.example.com/api/projects
 
 # 2. Pick a project, pull the narrative + verified facts
 curl -H "X-API-Key: $KEY" \
-  "https://research.example.com/api/projects/<slug>?include=analysis,facts,plan"
+  "https://syncera.example.com/api/projects/<slug>?include=analysis,facts,plan"
 
 # 3. Or just the markdown report
-curl -H "X-API-Key: $KEY" https://research.example.com/api/projects/<slug>/report
+curl -H "X-API-Key: $KEY" https://syncera.example.com/api/projects/<slug>/report
 
 # 4. Kick off a new investigation
 curl -X POST -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
   -d '{"topic": "..."}' \
-  https://research.example.com/api/runs/start
+  https://syncera.example.com/api/runs/start
 ```

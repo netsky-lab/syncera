@@ -160,7 +160,7 @@ projects/<slug>/
 
 Measured against ChatGPT Deep Research on a shared seed topic ("KV-cache compression to fit a 35B MoE model into 4 GPU slots on RTX 5090"). Reproduce with `bun run scripts/eval.ts <slug>`:
 
-| Metric                           | ChatGPT Deep Research | Research Lab |
+| Metric                           | ChatGPT Deep Research | Syncera |
 |----------------------------------|----------------------:|-------------:|
 | Primary-source share             | 85 %                  | **92.5 %**   |
 | URL validity (malformed=0)       | 100 %                 | 100 %        |
@@ -206,6 +206,12 @@ bun run dev           # localhost:3000
 - **PDF export**: `/api/projects/{slug}/pdf` — Playwright renders `/projects/{slug}/print` into a print-mode document.
 
 Deploy to a server via `deploy/docker-compose.yml` (SearXNG + web + docker-out-of-docker so the web container can spawn pipeline containers on the shared network). See `deploy/README.md`.
+
+Operational docs:
+
+- [`docs/OPERATIONS.md`](./docs/OPERATIONS.md) — deploy loop, runtime shape, health checks, and common failures.
+- [`docs/SECURITY_MODEL.md`](./docs/SECURITY_MODEL.md) — current trust boundaries, controls, and hosted-SaaS gaps.
+- [`docs/OPEN_SOURCE_READINESS.md`](./docs/OPEN_SOURCE_READINESS.md) — release checklist for public evaluation.
 
 ## Architecture
 

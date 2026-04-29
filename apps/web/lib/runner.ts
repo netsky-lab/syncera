@@ -52,7 +52,7 @@ function pipelineSearxngUrl(): string {
   if (process.env.SEARXNG_URL) return process.env.SEARXNG_URL;
   return pipelineNetwork() === "searxng_default"
     ? "http://searxng-core:8080"
-    : "http://research-lab-searxng:8080";
+    : "http://searxng:8080";
 }
 
 function clearProjectArtifacts(projectDir: string) {

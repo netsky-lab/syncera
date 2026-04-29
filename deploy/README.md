@@ -1,4 +1,4 @@
-# Research Lab — Deploy
+# Syncera — Deploy
 
 Self-hosted stack: web UI + REST API + pipeline runner on a single host. The web container spawns pipeline containers on the same compose network via docker-out-of-docker, so topics kicked off from the UI run server-side.
 
@@ -20,8 +20,8 @@ Self-hosted stack: web UI + REST API + pipeline runner on a single host. The web
 1. On the server, clone the repo (or rsync the tree):
 
    ```
-   git clone <url> /opt/research-lab
-   cd /opt/research-lab
+   git clone <url> /opt/syncera
+   cd /opt/syncera
    ```
 
 2. Create `deploy/.env`:
@@ -30,7 +30,7 @@ Self-hosted stack: web UI + REST API + pipeline runner on a single host. The web
    cp deploy/.env.example deploy/.env
    # REQUIRED:
    #   SESSION_SECRET=$(openssl rand -hex 32)
-   #   GEMMA_BASE_URL=<your LLM endpoint>
+   #   QWEN_BASE_URL=<your LLM endpoint>
    # OPTIONAL:
    #   ADMIN_EMAIL / ADMIN_PASSWORD to seed the bootstrap admin via env;
    #   or BOOTSTRAP_TOKEN to allow exactly the intended first admin signup.
@@ -56,7 +56,7 @@ Self-hosted stack: web UI + REST API + pipeline runner on a single host. The web
 5. Point your reverse proxy at `127.0.0.1:3000`. Caddyfile:
 
    ```
-   research.example.com {
+   syncera.example.com {
      reverse_proxy 127.0.0.1:3000
    }
    ```
@@ -73,7 +73,7 @@ Self-hosted stack: web UI + REST API + pipeline runner on a single host. The web
   and runs `src/run.ts <topic>`. Logs stream back to the UI via SSE.
 - **From the API**: `POST /api/runs/start` with `{topic, constraints?}` and
   an API key or session cookie (see `/api/openapi.json`).
-- **From the CLI on the server**: `docker exec -it research-lab-web bun
+- **From the CLI on the server**: `docker exec -it syncera-web bun
   run src/run.ts "<topic>"` — runs in the web container itself, writes to
   `/app/projects/<slug>/`.
 
@@ -102,8 +102,8 @@ Authorization: Bearer <key>
 
 ```
 # sync code + restart:
-rsync -az --exclude /projects --exclude /data <source>:/opt/research-lab/
-cd /opt/research-lab/deploy
+rsync -az --exclude /projects --exclude /data <source>:/opt/syncera/
+cd /opt/syncera/deploy
 docker compose up -d --build web
 ```
 
@@ -118,7 +118,7 @@ artifacts) is kept across rebuilds.
 - `500` on pipeline spawn — check `stat -c %g /var/run/docker.sock` matches
   `DOCKER_GID`, and confirm `PIPELINE_NETWORK` equals the compose network
   name (usually `<deploy-dir>_default`).
-- PDF export blank — `docker exec research-lab-web chromium-browser --version`
+- PDF export blank — `docker exec syncera-web chromium-browser --version`
   should print a version; otherwise the image didn't bundle chromium.
 - Healthcheck failing — `curl http://127.0.0.1:3000/api/health` should
   return `200 {"status":"ok"}` regardless of auth state.

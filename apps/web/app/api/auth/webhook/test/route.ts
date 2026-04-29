@@ -47,7 +47,7 @@ export async function POST(request: Request) {
         "Content-Type": "application/json",
         "X-Signature-256": signature,
         "X-Event": "run.test",
-        "User-Agent": "research-lab-webhook/1",
+        "User-Agent": "syncera-webhook/1",
       },
       body,
       signal: AbortSignal.timeout(10_000),

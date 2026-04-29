@@ -132,7 +132,7 @@ export async function searchOpenAlex(
   const resp = await fetchWithTimeout(url, "openalex", {
     headers: {
       Accept: "application/json",
-      "User-Agent": "research-lab/1.0 (mailto:research-lab@local)",
+      "User-Agent": "syncera/1.0 (mailto:research@syncera.local)",
     },
   });
   if (!resp.ok) {

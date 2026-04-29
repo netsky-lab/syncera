@@ -1,11 +1,11 @@
-# SearXNG config for the Research Lab pipeline.
+# SearXNG config for the Syncera pipeline.
 # Derived from official defaults with JSON output enabled and a generated
 # secret key (replace the placeholder on first deploy).
 
 use_default_settings: true
 
 general:
-  instance_name: "research-lab-searxng"
+  instance_name: "syncera-searxng"
   # Flip to true if you want privacy links in the web UI (we don't expose it)
   privacypolicy_url: false
   donation_url: false

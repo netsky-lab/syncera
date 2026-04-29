@@ -1,11 +1,11 @@
 use_default_settings: true
 
 general:
-  instance_name: "Research Lab"
+  instance_name: "Syncera"
 
 server:
   base_url: "http://localhost:8888/"
-  secret_key: "research-lab-dev-change-me"
+  secret_key: "syncera-dev-change-me"
   limiter: false
   image_proxy: false
   public_instance: false

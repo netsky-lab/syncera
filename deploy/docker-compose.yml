@@ -1,8 +1,8 @@
-# Research Lab — web UI deploy compose.
+# Syncera — web UI deploy compose.
 #
 # Usage on the server:
 #   1. Copy this file + the build context to the server (see deploy/README.md).
-#   2. Set BASIC_AUTH_PASS in .env next to this file.
+#   2. Create deploy/.env from deploy/.env.example.
 #   3. rsync the projects/ directory to the server (persistent volume).
 #   4. docker compose up -d --build
 #
@@ -12,7 +12,7 @@
 services:
   searxng:
     image: searxng/searxng:latest
-    container_name: research-lab-searxng
+    container_name: syncera-searxng
     restart: unless-stopped
     expose:
       - "8080"
@@ -20,7 +20,7 @@ services:
       - ./searxng:/etc/searxng:rw
     environment:
       SEARXNG_BASE_URL: http://localhost:8080/
-      INSTANCE_NAME: research-lab
+      INSTANCE_NAME: syncera
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://localhost:8080/healthz || exit 1"]
       interval: 30s
@@ -32,17 +32,16 @@ services:
     build:
       context: ../
       dockerfile: apps/web/Dockerfile
-    container_name: research-lab-web
+    container_name: syncera-web
     restart: unless-stopped
     ports:
       # Publish on all interfaces so the site is reachable from the internet.
-      # Basic Auth + HTTPS (via reverse proxy) is recommended for production;
-      # without TLS the password travels in clear text — see deploy/README.md.
+      # HTTPS via reverse proxy is required for production.
       - "80:3000"
       - "3000:3000"
     environment:
       BASIC_AUTH_USER: ${BASIC_AUTH_USER:-research}
-      BASIC_AUTH_PASS: ${BASIC_AUTH_PASS:?BASIC_AUTH_PASS must be set in .env}
+      BASIC_AUTH_PASS: ${BASIC_AUTH_PASS:-}
       # Comma-separated list of accepted API keys for /api/* endpoints.
       # If unset, API routes require Basic Auth.
       API_KEYS: ${API_KEYS:-}
@@ -57,6 +56,7 @@ services:
       # (standalone server.js runs from /app/apps/web) don't matter.
       USER_STORE_PATH: /app/data/users.json
       KEY_STORE_PATH: /app/data/api_keys.json
+      SHARE_TOKEN_STORE_PATH: /app/data/share_tokens.json
       # Bootstrap admin user on first start (seeded to users.json).
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
@@ -67,17 +67,49 @@ services:
       # Must be externally reachable by the webhook consumer.
       PUBLIC_URL: ${PUBLIC_URL:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+      RESEND_REPLY_TO: ${RESEND_REPLY_TO:-}
       NODE_ENV: production
       # LLM endpoint + search used when the web UI spawns a pipeline run.
       # Override via deploy/.env.
-      SEARXNG_URL: ${SEARXNG_URL:-http://research-lab-searxng:8080}
-      GEMMA_BASE_URL: ${GEMMA_BASE_URL:?GEMMA_BASE_URL must be set in .env (LLM endpoint)}
+      SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
+      LLM_PROVIDER: ${LLM_PROVIDER:-qwen}
+      LLM_STREAM: ${LLM_STREAM:-0}
+      LLM_MAX_CONCURRENCY: ${LLM_MAX_CONCURRENCY:-8}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen3.6-35b-a3b}
+      QWEN_API_KEY: ${QWEN_API_KEY:-dummy}
+      QWEN_FALLBACK_URLS: ${QWEN_FALLBACK_URLS:-}
+      GEMMA_BASE_URL: ${GEMMA_BASE_URL:-}
       GEMMA_MODEL: ${GEMMA_MODEL:-qwen3.6-35b-a3b}
       GEMMA_API_KEY: ${GEMMA_API_KEY:-dummy}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3-flash-preview}
+      GEMINI_REASONING_EFFORT: ${GEMINI_REASONING_EFFORT:-low}
+      GEMINI_SEARCH_GROUNDING: ${GEMINI_SEARCH_GROUNDING:-0}
+      GEMINI_SEARCH_MAX_RESULTS: ${GEMINI_SEARCH_MAX_RESULTS:-5}
+      GEMINI_SEARCH_TIMEOUT_MS: ${GEMINI_SEARCH_TIMEOUT_MS:-20000}
+      CONCURRENCY_HARVEST: ${CONCURRENCY_HARVEST:-}
+      CONCURRENCY_EVIDENCE: ${CONCURRENCY_EVIDENCE:-}
+      CONCURRENCY_ANALYZER: ${CONCURRENCY_ANALYZER:-}
+      CONCURRENCY_RELEVANCE: ${CONCURRENCY_RELEVANCE:-}
+      CONCURRENCY_VERIFIER: ${CONCURRENCY_VERIFIER:-}
+      EVIDENCE_LEARNINGS_PER_BATCH: ${EVIDENCE_LEARNINGS_PER_BATCH:-}
+      EVIDENCE_MAX_TOKENS: ${EVIDENCE_MAX_TOKENS:-}
+      HARVEST_BREADTH: ${HARVEST_BREADTH:-}
+      HARVEST_DEPTH: ${HARVEST_DEPTH:-}
+      HARVEST_PAGES_PER_QUERY: ${HARVEST_PAGES_PER_QUERY:-}
+      HARVEST_URLS_PER_QUERY: ${HARVEST_URLS_PER_QUERY:-}
+      HARVEST_READ_CONCURRENCY: ${HARVEST_READ_CONCURRENCY:-}
+      MAX_HARVEST_MINUTES: ${MAX_HARVEST_MINUTES:-}
+      MAX_HARVEST_SOURCES: ${MAX_HARVEST_SOURCES:-}
+      SNOWBALL_MAX_PAPERS: ${SNOWBALL_MAX_PAPERS:-}
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: ${PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:-}
       # The web container spawns sibling pipeline containers via the host
       # docker daemon. They need to know the host-side path to bind-mount
       # and the compose network to attach to.
-      PIPELINE_HOST_REPO_ROOT: ${PIPELINE_HOST_REPO_ROOT:-/opt/research-lab}
+      PIPELINE_HOST_REPO_ROOT: ${PIPELINE_HOST_REPO_ROOT:-/opt/syncera}
       PIPELINE_NETWORK: ${PIPELINE_NETWORK:-deploy_default}
     volumes:
       # Writable mount — the pipeline (spawned from the web container)
