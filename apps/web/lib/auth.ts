@@ -31,6 +31,19 @@ function apiKeyFromHeaders(headers: Headers): string | null {
   return null;
 }
 
+function requiredScopeForRequest(request: Request): string {
+  const url = new URL(request.url);
+  const method = request.method.toUpperCase();
+  if (method === "GET" || method === "HEAD") return "project:read";
+  if (url.pathname === "/api/runs/start") return "run:start";
+  return "project:write";
+}
+
+function keyHasScope(record: { scopes?: string[] }, request: Request): boolean {
+  const scopes = record.scopes ?? ["project:read", "run:start"];
+  return scopes.includes(requiredScopeForRequest(request));
+}
+
 export function requireAuth(request: Request): { ok: true } | { ok: false; response: Response } {
   const basicPass = process.env.BASIC_AUTH_PASS;
   if (
@@ -60,7 +73,17 @@ export function requireAuth(request: Request): { ok: true } | { ok: false; respo
       .map((s) => s.trim())
       .filter(Boolean);
     if (seedKeys.includes(rawKey)) return { ok: true };
-    if (verifyKey(rawKey)) return { ok: true };
+    const record = verifyKey(rawKey);
+    if (record) {
+      if (keyHasScope(record, request)) return { ok: true };
+      return {
+        ok: false,
+        response: Response.json(
+          { error: `API key scope required: ${requiredScopeForRequest(request)}` },
+          { status: 403 }
+        ),
+      };
+    }
   }
 
   // Basic Auth fallback for legacy/dev deployments. Once SESSION_SECRET is

@@ -24,6 +24,7 @@ export interface ApiKey {
   // owner's visibility — they can read all of the owner's projects, not
   // just showcase. Env-seed keys (legacy) have `owner_uid: null`.
   owner_uid?: string | null;
+  scopes?: string[];
 }
 
 // Resolve per-call so tests (and any env changes) take effect without a
@@ -70,7 +71,8 @@ export function listKeys(): Omit<ApiKey, "hash">[] {
 // user's projects; omit for bootstrap/admin keys (rarely what you want).
 export function createKey(
   name: string,
-  ownerUid: string | null = null
+  ownerUid: string | null = null,
+  scopes: string[] = ["project:read", "run:start"]
 ): { id: string; raw: string; prefix: string } {
   const all = readAll();
   const rawBytes = randomBytes(24);
@@ -86,10 +88,17 @@ export function createKey(
     last_used_at: null,
     revoked_at: null,
     owner_uid: ownerUid,
+    scopes: normalizeScopes(scopes),
   };
   all.push(entry);
   writeAll(all);
   return { id, raw, prefix };
+}
+
+export function normalizeScopes(scopes: string[]): string[] {
+  const valid = new Set(["project:read", "run:start", "project:write"]);
+  const normalized = scopes.map((s) => s.trim()).filter((s) => valid.has(s));
+  return [...new Set(normalized.length > 0 ? normalized : ["project:read"])];
 }
 
 export function revokeKey(id: string): boolean {
@@ -118,6 +127,7 @@ export function verifyKey(raw: string): Omit<ApiKey, "hash"> | null {
       created_at: 0,
       last_used_at: Date.now(),
       revoked_at: null,
+      scopes: ["project:read", "run:start", "project:write"],
     };
   }
 
@@ -133,5 +143,6 @@ export function verifyKey(raw: string): Omit<ApiKey, "hash"> | null {
   } catch {}
 
   const { hash: _, ...rest } = match;
+  rest.scopes = normalizeScopes(rest.scopes ?? ["project:read", "run:start"]);
   return rest;
 }

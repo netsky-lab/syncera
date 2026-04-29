@@ -54,8 +54,11 @@ afterAll(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-function req(headers: Record<string, string>): Request {
-  return new Request("http://test.local/", { headers });
+function req(headers: Record<string, string>, init?: RequestInit & { url?: string }): Request {
+  return new Request(init?.url ?? "http://test.local/api/projects", {
+    ...init,
+    headers,
+  });
 }
 
 // ─── requireAuth ──────────────────────────────────────────────────────────
@@ -110,6 +113,32 @@ describe("requireAuth", () => {
     K.revokeKey(k.id);
     const r = A.requireAuth(req({ "x-api-key": k.raw }));
     expect(r.ok).toBe(false);
+  });
+
+  test("rejects read-only API key on write route", () => {
+    const k = K.createKey("readonly", "u_owner", ["project:read"]);
+    const r = A.requireAuth(
+      req(
+        { "x-api-key": k.raw },
+        {
+          url: "http://test.local/api/projects/demo/sources/status",
+          method: "PATCH",
+        }
+      )
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.response.status).toBe(403);
+  });
+
+  test("accepts run:start scoped API key on start route", () => {
+    const k = K.createKey("runner", "u_owner", ["run:start"]);
+    const r = A.requireAuth(
+      req(
+        { "x-api-key": k.raw },
+        { url: "http://test.local/api/runs/start", method: "POST" }
+      )
+    );
+    expect(r.ok).toBe(true);
   });
 
   test("rejects missing credentials", () => {

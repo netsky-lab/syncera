@@ -62,6 +62,23 @@ describe("createKey ownership", () => {
     const list = K.listKeys();
     expect(list[0]!.owner_uid).toBe("u_abc123");
   });
+
+  test("keys default to read plus run-start scopes", () => {
+    K.createKey("default-scopes", "u_abc123");
+    const list = K.listKeys();
+    expect(list[0]!.scopes).toEqual(["project:read", "run:start"]);
+  });
+
+  test("normalizes custom scopes and drops duplicates", () => {
+    K.createKey("custom-scopes", "u_abc123", [
+      "project:read",
+      "project:read",
+      "project:write",
+      "nope",
+    ]);
+    const list = K.listKeys();
+    expect(list[0]!.scopes).toEqual(["project:read", "project:write"]);
+  });
 });
 
 describe("verifyKey", () => {

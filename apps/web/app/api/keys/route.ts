@@ -2,7 +2,7 @@
 // mint a key for their own account). Admin-wide view lives at
 // /api/admin/keys — this route only exposes the caller's own keys.
 
-import { listKeys, createKey } from "@/lib/keys";
+import { listKeys, createKey, normalizeScopes } from "@/lib/keys";
 import { cookies } from "next/headers";
 import { verifySessionUser, COOKIE_NAME } from "@/lib/sessions";
 
@@ -33,12 +33,16 @@ export async function POST(request: Request) {
   if (typeof uid !== "string") return uid;
   const body = await request.json().catch(() => ({}));
   const name = String(body.name ?? "").trim();
-  const { id, raw, prefix } = createKey(name, uid);
+  const scopes = Array.isArray(body.scopes)
+    ? normalizeScopes(body.scopes.map(String))
+    : ["project:read", "run:start"];
+  const { id, raw, prefix } = createKey(name, uid, scopes);
   return Response.json(
     {
       id,
       name: name || "unnamed",
       prefix,
+      scopes,
       key: raw,
       warning:
         "Save this key now — it will never be shown again. Revoke and mint a new one if lost.",

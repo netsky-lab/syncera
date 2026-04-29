@@ -279,6 +279,15 @@ export function buildOpenApiSpec(origin = "https://example.local") {
               description:
                 "The user who minted the key. API calls with this key inherit the owner's project visibility.",
             },
+            scopes: {
+              type: "array",
+              items: {
+                type: "string",
+                enum: ["project:read", "run:start", "project:write"],
+              },
+              description:
+                "Capabilities granted to this key. Read-only keys cannot mutate source trust, tweaks, shares, or other project state.",
+            },
           },
         },
         SectionVariant: {
@@ -1263,7 +1272,16 @@ export function buildOpenApiSpec(origin = "https://example.local") {
               "application/json": {
                 schema: {
                   type: "object",
-                  properties: { name: { type: "string" } },
+                  properties: {
+                    name: { type: "string" },
+                    scopes: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                        enum: ["project:read", "run:start", "project:write"],
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -1279,6 +1297,10 @@ export function buildOpenApiSpec(origin = "https://example.local") {
                       id: { type: "string" },
                       name: { type: "string" },
                       prefix: { type: "string" },
+                      scopes: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
                       key: { type: "string", description: "Raw API key — save it now." },
                       warning: { type: "string" },
                     },
@@ -1343,7 +1365,16 @@ export function buildOpenApiSpec(origin = "https://example.local") {
               "application/json": {
                 schema: {
                   type: "object",
-                  properties: { name: { type: "string" } },
+                  properties: {
+                    name: { type: "string" },
+                    scopes: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                        enum: ["project:read", "run:start", "project:write"],
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -1359,6 +1390,10 @@ export function buildOpenApiSpec(origin = "https://example.local") {
                       id: { type: "string" },
                       name: { type: "string" },
                       prefix: { type: "string" },
+                      scopes: {
+                        type: "array",
+                        items: { type: "string" },
+                      },
                       key: { type: "string" },
                       warning: { type: "string" },
                     },

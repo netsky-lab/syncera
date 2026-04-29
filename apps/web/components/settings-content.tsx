@@ -12,6 +12,7 @@ type ApiKey = {
   created_at: number;
   last_used_at: number | null;
   revoked_at: number | null;
+  scopes?: string[];
 };
 
 type User = {
@@ -285,6 +286,7 @@ export function SettingsContent() {
   const [role, setRole] = useState<"admin" | "user" | null>(null);
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [name, setName] = useState("");
+  const [scopes, setScopes] = useState<string[]>(["project:read", "run:start"]);
   const [creating, setCreating] = useState(false);
   const [newlyCreated, setNewlyCreated] = useState<{
     name: string;
@@ -323,7 +325,7 @@ export function SettingsContent() {
       const r = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, scopes }),
       });
       if (!r.ok) {
         setError(`Create failed: HTTP ${r.status}`);
@@ -332,6 +334,7 @@ export function SettingsContent() {
       const data = await r.json();
       setNewlyCreated({ name: data.name, key: data.key });
       setName("");
+      setScopes(["project:read", "run:start"]);
       await load();
     } catch (e: any) {
       setError(String(e?.message ?? e));
@@ -353,6 +356,13 @@ export function SettingsContent() {
 
   const active = keys.filter((k) => !k.revoked_at);
   const revoked = keys.filter((k) => k.revoked_at);
+  const toggleScope = (scope: string) => {
+    setScopes((current) =>
+      current.includes(scope)
+        ? current.filter((s) => s !== scope)
+        : [...current, scope]
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -395,9 +405,30 @@ export function SettingsContent() {
                 className="w-full px-3 py-1.5 text-sm rounded-md border border-border bg-background placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
               />
             </label>
+            <div className="flex min-w-[240px] flex-wrap gap-1.5">
+              {[
+                ["project:read", "Read"],
+                ["run:start", "Start runs"],
+                ["project:write", "Write"],
+              ].map(([value, label]) => (
+                <label
+                  key={value}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2 text-[11px]"
+                  title={value}
+                >
+                  <input
+                    type="checkbox"
+                    checked={scopes.includes(value)}
+                    onChange={() => toggleScope(value)}
+                    className="size-3"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
             <button
               onClick={handleCreate}
-              disabled={creating || !name.trim()}
+              disabled={creating || !name.trim() || scopes.length === 0}
               className="text-sm px-4 py-1.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {creating ? "Creating…" : "Generate key"}
@@ -487,6 +518,11 @@ export function SettingsContent() {
                           env
                         </Badge>
                       )}
+                      {(k.scopes ?? ["project:read", "run:start"]).map((scope) => (
+                        <Badge key={scope} variant="outline" className="text-[9px]">
+                          {scope}
+                        </Badge>
+                      ))}
                     </div>
                     <div className="text-[11px] text-muted-foreground flex items-center gap-3 flex-wrap">
                       <span>created {timeFmt(k.created_at)}</span>
