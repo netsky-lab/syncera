@@ -610,6 +610,33 @@ export function buildOpenApiSpec(origin = "https://example.local") {
           },
         },
       },
+      "/api/projects/{slug}/export": {
+        get: {
+          summary: "Download project audit bundle",
+          description:
+            "Returns a zip containing REPORT.md, PLAYBOOK.md, JSON artifacts, source indexes, and run logs. Pass include_content=1 to include raw scraped source markdown.",
+          parameters: [
+            { name: "slug", in: "path", required: true, schema: { type: "string" } },
+            {
+              name: "include_content",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["1"] },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "ZIP archive",
+              content: {
+                "application/zip": {
+                  schema: { type: "string", format: "binary" },
+                },
+              },
+            },
+            "404": { description: "Project not found" },
+          },
+        },
+      },
       "/api/projects/{slug}/audit": {
         get: {
           summary: "Research audit trail",

@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
+  Archive,
   Brain,
   Check,
   Copy,
@@ -3040,6 +3041,14 @@ export function ProjectWorkflow({
                 >
                   <ShieldCheck size={14} />
                   Audit JSON
+                </a>
+                <a
+                  href={`/api/projects/${slug}/export`}
+                  className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-fg/[0.06] bg-ink-900 px-3 text-[12px] font-medium transition hover:bg-ink-700"
+                  title="Download REPORT.md, PLAYBOOK.md, JSON artifacts, source index, and run logs as a zip"
+                >
+                  <Archive size={14} />
+                  Audit ZIP
                 </a>
                 <ProjectRerunButton topic={plan.topic} />
                 {viewerUid && <ForkButton slug={slug} sourceTopic={plan.topic} />}
