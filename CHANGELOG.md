@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.2 — 2026-04-29
+
+Open-source and product-control hardening.
+
+### Product
+- Renamed remaining public/runtime surfaces from Research Lab to Syncera.
+- Added run phase telemetry: `/api/runs` now returns phase timeline plus LLM calls/tokens/cost by phase, and the dashboard shows live phase usage chips.
+- Added phase-aware rerun controls: full rerun or restart from plan, sources, evidence, verify, analyze, report, or playbook.
+- Added project audit ZIP export with report, playbook, JSON artifacts, source indexes, and run logs.
+- Added batch source-trust actions for filtered source review.
+
+### Security / API
+- API keys now carry capability scopes: `project:read`, `run:start`, and `project:write`.
+- Write endpoints reject read-only keys with a concrete required-scope error.
+- Settings UI can mint scoped keys and shows granted scopes.
+
+### OSS / Deploy
+- Added `docs/OPERATIONS.md`, `docs/SECURITY_MODEL.md`, and `docs/OPEN_SOURCE_READINESS.md`.
+- Updated deploy env examples for current Qwen/Gemini provider split and stable Qwen concurrency defaults.
+- Docker compose now exposes the current provider envs, Gemini settings, concurrency knobs, Resend settings, share-token store path, and Syncera container names.
+
 ## 0.4.1 — 2026-04-28
 
 Product hardening for evidence-led deep research.

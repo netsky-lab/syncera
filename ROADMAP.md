@@ -29,20 +29,38 @@
 - [x] Stronger run-history diff UI — compare source overlap plus verified facts, source quality, debt, and contradictions between reruns
 - [x] Run-health warnings for long-silent pipeline phases
 - [x] Source-quality summary across CLI artifacts, project loader, REST API, dashboard, live run UI, and project source review
+- [x] Syncera OSS/deploy polish: product naming, env examples, operations docs, security model, readiness checklist
+- [x] Run phase telemetry: `/api/runs` timeline, phase token/call/cost breakdown, dashboard phase chips
+- [x] Phase-aware rerun controls: rerun from scout, plan, sources, evidence, verify, analyze, report, or playbook
+- [x] Audit ZIP export with report/playbook/artifacts/source index/run logs
+- [x] Capability-scoped API keys (`project:read`, `run:start`, `project:write`)
+- [x] Batch source-trust actions for filtered source review
 - [ ] Better chunking for >100kB pages (current: truncate at 20k chars; lose tail content)
 - [ ] Per-phase model selection (cheap model for query generation, stronger for evidence/verify)
-- [ ] OSS polish: public demo dataset, benchmark replay script, short screencast/GIF
+- [ ] Public demo dataset, benchmark replay script, short screencast/GIF
+- [ ] First-class source relevance review queue with accept/reject keyboard workflow
+- [ ] Per-phase timeout/backoff policy visible in settings
 
 ## Medium-term
 
 - [ ] Embedding-based fact dedup (current: first-120-chars string match)
 - [ ] Semantic tension detection across facts (beyond current LLM analyzer pass)
 - [ ] Citation-graph expansion — follow references from primary hits into deeper related work
+- [ ] Claim graph visual page with dependency/counterevidence edges
+- [ ] Contradiction resolver workbench with side-by-side source excerpts and resolution labels
+- [ ] Research debt board with owners, status, branches, and follow-up run links
+- [ ] Report diff and playbook diff between project versions
+- [ ] Export/import project bundle for moving artifacts between self-hosted instances
 - [ ] Scheduled re-runs (cron) — keep long-lived projects updated as the literature moves
 - [ ] Migrate `zodToJsonHint` to `z.toJSONSchema()` (native in zod 4)
 
 ## Longer-term
 
 - [ ] Private-corpus ingestion — upload PDFs, point harvester at them alongside web search
+- [ ] Workspace/org model with roles beyond admin/user
+- [ ] Fine-grained API key rate limits and per-key usage ledger
+- [ ] Provider health dashboard and model-router policy per phase
+- [ ] Encrypted artifact store option for private corpora
+- [ ] Hosted multi-tenant security hardening: database, audit log, object storage, secrets vault
 - [ ] MCP tools — expose the pipeline so external agents can run research as a tool call
 - [ ] Credential vault for private corpora access (institutional paywalls, internal wikis)
