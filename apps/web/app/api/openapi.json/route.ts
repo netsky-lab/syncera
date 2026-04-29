@@ -796,6 +796,27 @@ export function buildOpenApiSpec(origin = "https://example.local") {
                   properties: {
                     topic: { type: "string", minLength: 10 },
                     constraints: { type: "string" },
+                    rerun: {
+                      type: "boolean",
+                      description: "When true, rerun the existing project slug instead of creating a new branch.",
+                    },
+                    rerun_from: {
+                      type: "string",
+                      enum: [
+                        "scout",
+                        "plan",
+                        "harvest",
+                        "evidence",
+                        "verify",
+                        "analyze",
+                        "epistemic",
+                        "contradictions",
+                        "synth",
+                        "playbook",
+                      ],
+                      description:
+                        "First phase to recompute. Earlier artifacts are reused; downstream artifacts are regenerated.",
+                    },
                     deep_settings: {
                       type: "object",
                       properties: {

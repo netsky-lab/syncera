@@ -21,6 +21,23 @@ export async function POST(request: Request) {
     ? body.deep_settings
     : {};
   const rerun = body.rerun === true;
+  const rerunFromRaw = typeof body.rerun_from === "string" ? body.rerun_from : "";
+  const rerunFrom = [
+    "scout",
+    "plan",
+    "harvest",
+    "evidence",
+    "verify",
+    "analyze",
+    "epistemic",
+    "contradictions",
+    "synth",
+    "playbook",
+  ].includes(rerunFromRaw)
+    ? rerunFromRaw
+    : rerun
+      ? "scout"
+      : "";
   // Optional user-curated source URLs. When present the pipeline skips
   // scout+harvest and uses only these URLs for evidence extraction.
   const rawSources = Array.isArray(body.user_sources) ? body.user_sources : [];
@@ -105,21 +122,67 @@ export async function POST(request: Request) {
   };
   if (provider) envOverrides.LLM_PROVIDER = provider;
 
+  const rerunArgsByPhase: Record<string, string[]> = {
+    scout: [
+      "--rescout",
+      "--replan",
+      "--reharvest",
+      "--re-relevance",
+      "--re-evidence",
+      "--re-verify",
+      "--re-analyze",
+      "--re-epistemic",
+      "--re-contradictions",
+      "--re-playbook",
+    ],
+    plan: [
+      "--replan",
+      "--reharvest",
+      "--re-relevance",
+      "--re-evidence",
+      "--re-verify",
+      "--re-analyze",
+      "--re-epistemic",
+      "--re-contradictions",
+      "--re-playbook",
+    ],
+    harvest: [
+      "--reharvest",
+      "--re-relevance",
+      "--re-evidence",
+      "--re-verify",
+      "--re-analyze",
+      "--re-epistemic",
+      "--re-contradictions",
+      "--re-playbook",
+    ],
+    evidence: [
+      "--re-evidence",
+      "--re-verify",
+      "--re-analyze",
+      "--re-epistemic",
+      "--re-contradictions",
+      "--re-playbook",
+    ],
+    verify: [
+      "--re-verify",
+      "--re-analyze",
+      "--re-epistemic",
+      "--re-contradictions",
+      "--re-playbook",
+    ],
+    analyze: ["--re-analyze", "--re-epistemic", "--re-contradictions", "--re-playbook"],
+    epistemic: ["--re-epistemic", "--re-contradictions", "--re-playbook"],
+    contradictions: ["--re-contradictions", "--re-playbook"],
+    synth: [],
+    playbook: ["--re-playbook"],
+  };
+
   const { runId, slug } = startRun(topic, mergedConstraints || undefined, ownerUid, {
     userSources: userSources.length > 0 ? userSources : undefined,
-    clearArtifacts: rerun,
+    clearArtifacts: rerunFrom === "scout",
     env: envOverrides,
-    extraArgs: rerun
-      ? [
-          "--rescout",
-          "--replan",
-          "--reharvest",
-          "--re-relevance",
-          "--re-evidence",
-          "--re-verify",
-          "--re-analyze",
-        ]
-      : undefined,
+    extraArgs: rerunFrom ? rerunArgsByPhase[rerunFrom] : undefined,
   });
   return Response.json({
     runId,
@@ -133,6 +196,6 @@ export async function POST(request: Request) {
       provider: provider ?? "default",
       preferred_source_types: preferredTypes,
     },
-    mode: rerun ? "rerun" : userSources.length > 0 ? "user-curated" : "harvest",
+    mode: rerunFrom ? `rerun:${rerunFrom}` : userSources.length > 0 ? "user-curated" : "harvest",
   });
 }
